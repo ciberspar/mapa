@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Base // ctOS</title>
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; }
+  body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    font-family: monospace;
+    background: #111;
+    color: #fff;
+    overflow: hidden;
+  }
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+  .hud-header {
+    position: absolute;
+    top: 15px; left: 15px; z-index: 1000;
+    background: rgba(10, 15, 25, 0.85);
+    border: 1px solid #00f3ff;
+    padding: 10px 15px;
+    border-radius: 4px;
+    color: #00f3ff;
+  }
+</style>
+</head>
+<body>
+
+  <div class="hud-header">
+    <h3 style="margin:0 0 5px 0;">MAPA TÁCTICO</h3>
+    <span style="font-size: 0.8rem; color: #8ab4f8;">Estado: Operativo (Base)</span>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Inicializar mapa centrado (por defecto en Córdoba, pero sirve para todo el mundo)
+    const map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Capa base global de OpenStreetMap (100% libre)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+  </script>
+</body>
+</html>
