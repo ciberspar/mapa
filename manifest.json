@@ -1,0 +1,15 @@
+{
+  "name": "ctOS Global Map",
+  "short_name": "ctOS Map",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#00f3ff",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/ios-filled/512/00f3ff/radar.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
