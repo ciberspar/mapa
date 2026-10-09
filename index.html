@@ -3,9 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ctOS // Global Map</title>
+<title>ctOS // Global Sec-Grid</title>
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00f3ff">
 <style>
   * { box-sizing: border-box; }
   body, html {
@@ -21,16 +23,21 @@
     background: #050811;
   }
   
-  /* Panel de Búsqueda y Controles */
+  /* Filtro ciberpunk para el mapa mundial */
+  .leaflet-layer {
+    filter: brightness(0.55) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.35);
+  }
+
+  /* Panel de Control HUD */
   .hud-panel {
     position: absolute;
     top: 15px; left: 15px; right: 15px; z-index: 1000;
-    max-width: 400px;
-    background: rgba(5, 12, 25, 0.9);
+    max-width: 420px;
+    background: rgba(5, 12, 25, 0.92);
     border: 1px solid #00f3ff;
     padding: 12px;
     border-radius: 4px;
-    box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.25);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -73,21 +80,36 @@
     font-size: 0.8rem;
     transition: all 0.2s;
   }
-  .hud-btn:hover {
+  .hud-btn:hover, .hud-btn.active {
     background: #00f3ff;
     color: #000;
   }
+  .hud-btn.danger {
+    border-color: #ff3333;
+    color: #ff3333;
+    background: rgba(255, 51, 51, 0.1);
+  }
+  .hud-btn.danger:hover, .hud-btn.danger.active {
+    background: #ff3333;
+    color: #fff;
+    box-shadow: 0 0 10px #ff3333;
+  }
 
-  /* Botón flotante para mi ubicación (abajo a la derecha) */
-  .gps-btn {
+  /* Botones flotantes */
+  .floating-controls {
     position: absolute;
     bottom: 30px; right: 20px; z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .float-btn {
     background: rgba(5, 12, 25, 0.9);
     border: 1px solid #00f3ff;
     color: #00f3ff;
     width: 45px; height: 45px;
     border-radius: 50%;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -95,110 +117,176 @@
     box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
     transition: all 0.2s;
   }
-  .gps-btn:hover {
+  .float-btn:hover {
     background: #00f3ff;
     color: #000;
   }
+
+  /* Popups de Terminal */
+  .leaflet-popup-content-wrapper {
+    background: rgba(5, 12, 25, 0.95) !important;
+    color: #fff !important;
+    border: 1px solid #00f3ff;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  .leaflet-popup-tip { background: #00f3ff !important; }
+  .risk-high { color: #ff3333; font-weight: bold; }
+  .risk-med { color: #ff9900; font-weight: bold; }
+  .risk-low { color: #00ff66; font-weight: bold; }
 </style>
 </head>
 <body>
 
   <div class="hud-panel">
-    <h3 class="hud-title">ctOS // BUSCADOR GLOBAL</h3>
+    <h3 class="hud-title">ctOS // GLOBAL NET-GRID</h3>
     <div class="search-box">
-      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar lugar o ciudad..." onkeypress="handleKeyPress(event)">
+      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar cualquier ciudad del mundo..." onkeypress="handleKeyPress(event)">
       <button class="hud-btn" onclick="buscarLugar()">Ir</button>
     </div>
+    <button class="hud-btn danger" id="btn-toggle-riesgo" onclick="toggleCapaRiesgo()" style="margin-top: 4px;">Activar Análisis Global de Riesgo</button>
   </div>
 
   <div id="map"></div>
 
-  <button class="gps-btn" onclick="centrarMiUbicacion()" title="Usar mi ubicación">📍</button>
+  <div class="floating-controls">
+    <button class="float-btn" onclick="centrarMiUbicacion()" title="Mi ubicación">📍</button>
+  </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Inicializar mapa (por defecto en Córdoba, Argentina)
-    const map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
-
+    const map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 3); // Vista global inicial del planeta
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    // Capa base de OpenStreetMap (100% libre y global)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
     let marcadorActual = null;
+    let capaZonasGlobal = L.layerGroup();
+    let riesgoActivo = false;
 
-    // Función para buscar lugares en todo el mundo usando la API pública de Nominatim (OSM)
+    // Base de datos simulada global (puntos estratégicos en diferentes continentes del mundo)
+    const zonasGlobalesData = [
+      // Argentina / Córdoba
+      { lat: -31.4135, lon: -64.1810, nombre: "Córdoba - Nueva Córdoba", nivel: "baja", desc: "Zona urbana de alto flujo. Precaución estándar por hurtos.", radio: 2500 },
+      // EE.UU / New York
+      { lat: 40.7128, lon: -74.0060, nombre: "New York - Manhattan Zone", nivel: "media", desc: "Área metropolitana monitoreada. Alerta por carteristas en zonas turísticas.", radio: 5000 },
+      // Reino Unido / Londres
+      { lat: 51.5074, lon: -0.1278, nombre: "London - Central Grid", nivel: "baja", desc: "Alta densidad de cámaras y patrullaje de seguridad.", radio: 4000 },
+      // Japón / Tokio
+      { lat: 35.6762, lon: 139.6503, nombre: "Tokyo - Shinjuku Sector", nivel: "baja", desc: "Zona comercial ultra segura con bajo índice de criminalidad violenta.", radio: 4500 },
+      // México / CDMX
+      { lat: 19.4326, lon: -99.1332, nombre: "Ciudad de México - Centro", nivel: "alta", desc: "Zona de atención prioritaria. Reportes frecuentes de actividad delictiva.", radio: 6000 },
+      // Brasil / Río de Janeiro
+      { lat: -22.9068, lon: -43.1729, nombre: "Río de Janeiro - Zona Sul Sector", nivel: "alta", desc: "Sector con alertas de seguridad activas en perímetros específicos.", radio: 5500 }
+    ];
+
+    function cargarZonasGlobales() {
+      capaZonasGlobal.clearLayers();
+
+      zonasGlobalesData.forEach(zona => {
+        let color = "#00ff66";
+        let textoRiesgo = '<span class="risk-low">ESTADO: SEGURO (Bajo riesgo)</span>';
+
+        if (zona.nivel === 'media') {
+          color = "#ff9900";
+          textoRiesgo = '<span class="risk-med">ESTADO: PRECAUCIÓN (Riesgo moderado)</span>';
+        } else if (zona.nivel === 'alta') {
+          color = "#ff3333";
+          textoRiesgo = '<span class="risk-high">ESTADO: ALERTA ROJA (Zona peligrosa)</span>';
+        }
+
+        const circle = L.circle([zona.lat, zona.lon], {
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.3,
+          radius: zona.radio,
+          weight: 2
+        });
+
+        circle.bindPopup(`
+          <div style="font-size: 0.85rem; line-height: 1.4;">
+            <b style="color:#00f3ff; font-size: 0.95rem;">${zona.nombre}</b><br>
+            ${textoRiesgo}<br><br>
+            <em>${zona.desc}</em>
+          </div>
+        `);
+
+        capaZonasGlobal.addLayer(circle);
+      });
+    }
+
+    function toggleCapaRiesgo() {
+      riesgoActivo = !riesgoActivo;
+      const btn = document.getElementById('btn-toggle-riesgo');
+
+      if (riesgoActivo) {
+        cargarZonasGlobales();
+        capaZonasGlobal.addTo(map);
+        btn.classList.add('active');
+        btn.textContent = "Desactivar Análisis Global";
+      } else {
+        map.removeLayer(capaZonasGlobal);
+        btn.classList.remove('active');
+        btn.textContent = "Activar Análisis Global de Riesgo";
+      }
+    }
+
     function buscarLugar() {
       const query = document.getElementById('ubicacion-input').value;
       if (!query) return;
 
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-
-      fetch(url)
-        .then(response => response.json())
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
         .then(data => {
           if (data && data.length > 0) {
             const lat = parseFloat(data[0].lat);
             const lon = parseFloat(data[0].lon);
-            const displayName = data[0].display_name;
+            map.setView([lat, lon], 12); // Hace zoom a la ciudad buscada en cualquier parte del mundo
 
-            // Mover el mapa a la ubicación encontrada
-            map.setView([lat, lon], 14);
-
-            // Poner o mover un marcador en el lugar
-            if (marcadorActual) {
-              map.removeLayer(marcadorActual);
-            }
+            if (marcadorActual) map.removeLayer(marcadorActual);
             marcadorActual = L.marker([lat, lon]).addTo(map)
-              .bindPopup(`<b>Ubicación:</b><br>${displayName}`)
+              .bindPopup(`<b>Objetivo Localizado:</b><br>${data[0].display_name}`)
               .openPopup();
           } else {
-            alert("No se encontró la ubicación.");
+            alert("Ubicación no encontrada en la red.");
           }
-        })
-        .catch(err => {
-          console.error("Error en la búsqueda:", err);
-          alert("Error al conectar con el servicio de búsqueda.");
         });
     }
 
-    // Permitir buscar presionando la tecla "Enter"
     function handleKeyPress(e) {
-      if (e.key === 'Enter') {
-        buscarLugar();
-      }
+      if (e.key === 'Enter') buscarLugar();
     }
 
-    // Función para usar el GPS del dispositivo y centrar el mapa
     function centrarMiUbicacion() {
       if (!navigator.geolocation) {
-        alert("Tu navegador no soporta geolocalización.");
+        alert("Geolocalización no soportada.");
         return;
       }
+      navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        map.setView([lat, lon], 14);
 
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
+        if (marcadorActual) map.removeLayer(marcadorActual);
+        marcadorActual = L.marker([lat, lon]).addTo(map)
+          .bindPopup("<b>Ubicación Actual (GPS)</b>")
+          .openPopup();
+      }, () => {
+        alert("No se pudo obtener tu ubicación.");
+      }, { enableHighAccuracy: true });
+    }
+  </script>
 
-          map.setView([lat, lon], 15);
-
-          if (marcadorActual) {
-            map.removeLayer(marcadorActual);
-          }
-          marcadorActual = L.marker([lat, lon]).addTo(map)
-            .bindPopup("<b>Estás aquí</b>")
-            .openPopup();
-        },
-        () => {
-          alert("No se pudo obtener tu ubicación. Verifica los permisos del navegador.");
-        },
-        { enableHighAccuracy: true }
-      );
+  <!-- Service Worker para PWA Global -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log("SW error", err));
+      });
     }
   </script>
 </body>
