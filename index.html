@@ -47,10 +47,14 @@
     font-weight: bold;
     letter-spacing: 1px;
     margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
   .search-box {
     display: flex;
     gap: 6px;
+    position: relative;
   }
   .hud-input {
     flex: 1;
@@ -95,6 +99,87 @@
     box-shadow: 0 0 10px #00ff66;
   }
 
+  /* Lista de sugerencias de autocompletado */
+  #suggestions-list {
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    background: rgba(5, 12, 25, 0.98);
+    border: 1px solid #00f3ff;
+    border-top: none;
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 1001;
+    display: none;
+    border-radius: 0 0 4px 4px;
+  }
+  .suggestion-item {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    color: #00f3ff;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .suggestion-item:hover {
+    background: rgba(0, 243, 255, 0.2);
+    color: #fff;
+  }
+
+  /* Panel de Favoritos Lateral */
+  .fav-drawer {
+    position: absolute;
+    top: 15px; right: 15px; z-index: 1000;
+    width: 280px;
+    background: rgba(5, 12, 25, 0.95);
+    border: 1px solid #00f3ff;
+    border-radius: 4px;
+    padding: 10px;
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+    max-height: 350px;
+    display: flex;
+    flex-direction: column;
+  }
+  .fav-header {
+    font-size: 0.8rem;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .fav-list {
+    overflow-y: auto;
+    max-height: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fav-item {
+    background: rgba(0, 243, 255, 0.05);
+    border: 1px solid rgba(0, 243, 255, 0.2);
+    padding: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fav-item:hover {
+    background: rgba(0, 243, 255, 0.2);
+    color: #fff;
+  }
+  .del-fav {
+    background: none;
+    border: none;
+    color: #ff3366;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
   /* Botones flotantes */
   .floating-controls {
     position: absolute;
@@ -132,6 +217,23 @@
   }
   .leaflet-popup-tip { background: #00f3ff !important; }
   .official-tag { color: #00ff66; font-size: 0.75rem; font-weight: bold; }
+  
+  .hud-popup-btn {
+    margin-top: 6px;
+    background: rgba(0, 243, 255, 0.2);
+    border: 1px solid #00f3ff;
+    color: #00f3ff;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 0.75rem;
+    border-radius: 2px;
+    width: 100%;
+  }
+  .hud-popup-btn:hover {
+    background: #00f3ff;
+    color: #000;
+  }
 </style>
 </head>
 <body>
@@ -139,10 +241,19 @@
   <div class="hud-panel">
     <h3 class="hud-title">ctOS // OFFICIAL DATA GRID</h3>
     <div class="search-box">
-      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar país, ciudad o región..." onkeypress="handleKeyPress(event)">
-      <button class="hud-btn" onclick="buscarLugar()">Ir</button>
+      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar país, ciudad o calle..." autocomplete="off" oninput="sugerirLugares(this.value)" onkeypress="handleKeyPress(event)">
+      <button class="hud-btn" onclick="buscarLugarDirecto()">Ir</button>
+      <div id="suggestions-list"></div>
     </div>
     <button class="hud-btn official" id="btn-toggle-oficial" onclick="toggleCapasOficiales()" style="margin-top: 4px;">Sincronizar Datos Oficiales (GeoJSON)</button>
+  </div>
+
+  <!-- Panel de Favoritos -->
+  <div class="fav-drawer">
+    <div class="fav-header"><span>// OBJETIVOS FAVORITOS</span><span id="fav-count">0</span></div>
+    <div class="fav-list" id="lista-favoritos">
+      <!-- Se llena por JS -->
+    </div>
   </div>
 
   <div id="map"></div>
@@ -154,7 +265,7 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 3);
+    const map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
     L.control.zoom({ position: 'topright' }).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -165,8 +276,12 @@
     let marcadorActual = null;
     let capaOficialesGrupo = L.layerGroup();
     let datosOficialesActivos = false;
+    let timeoutBusqueda = null;
+    
+    // Almacenamiento local de favoritos
+    let favoritos = JSON.parse(localStorage.getItem('ctos_favoritos')) || [];
+    renderizarFavoritos();
 
-    // Estructura universal preparada para ingerir datos oficiales globales (GeoJSON / APIs abiertas gubernamentales)
     const registrosOficialesGlobales = [
       {
         type: "Feature",
@@ -177,18 +292,11 @@
         type: "Feature",
         geometry: { type: "Point", coordinates: [-74.0060, 40.7128] },
         properties: { fuente: "NYC Open Data / NYPD Metrics", entidad: "Central Precinct Sector", desc: "Datos oficiales de reportes urbanos metropolitanos.", nivel: "Oficial Verificado" }
-      },
-      {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [-0.1278, 51.5074] },
-        properties: { fuente: "Metropolitan Police UK Open Stats", entidad: "London Central Grid", desc: "Estadísticas oficiales de seguridad integradas.", nivel: "Oficial Verificado" }
       }
     ];
 
     function cargarDatosOficiales() {
       capaOficialesGrupo.clearLayers();
-
-      // Procesamiento estándar GeoJSON compatible con fuentes oficiales de todo el mundo
       L.geoJSON({
         type: "FeatureCollection",
         features: registrosOficialesGlobales
@@ -219,7 +327,6 @@
     function toggleCapasOficiales() {
       datosOficialesActivos = !datosOficialesActivos;
       const btn = document.getElementById('btn-toggle-oficial');
-
       if (datosOficialesActivos) {
         cargarDatosOficiales();
         capaOficialesGrupo.addTo(map);
@@ -232,22 +339,93 @@
       }
     }
 
-    function buscarLugar() {
+    // Evento de clic en cualquier parte del mapa (Reverse Geocoding para calles y lugares)
+    map.on('click', function(e) {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+        .then(res => res.json())
+        .then(data => {
+          const nombreLugar = data.display_name || "Ubicación sin registro exacto";
+          
+          if (marcadorActual) map.removeLayer(marcadorActual);
+          marcadorActual = L.marker([lat, lon]).addTo(map)
+            .bindPopup(`
+              <div style="font-size: 0.85rem; line-height: 1.4;">
+                <b style="color:#00f3ff;">[ANÁLISIS DE CALLE / SECTOR]</b><br>
+                ${nombreLugar}<br><br>
+                <button class="hud-popup-btn" onclick="agregarFavorito('${nombreLugar.replace(/'/g, "\\'")}', ${lat}, ${lon})">[+] Añadir a Favoritos</button>
+              </div>
+            `)
+            .openPopup();
+        })
+        .catch(() => {
+          alert("Error al conectar con la red de mapeo.");
+        });
+    });
+
+    function sugerirLugares(query) {
+      clearTimeout(timeoutBusqueda);
+      const lista = document.getElementById('suggestions-list');
+      
+      if (!query || query.length < 2) {
+        lista.style.display = 'none';
+        lista.innerHTML = '';
+        return;
+      }
+
+      timeoutBusqueda = setTimeout(() => {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
+          .then(res => res.json())
+          .then(data => {
+            lista.innerHTML = '';
+            if (data && data.length > 0) {
+              data.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.textContent = item.display_name;
+                div.onclick = () => seleccionarSugerencia(item.lat, item.lon, item.display_name);
+                lista.appendChild(div);
+              });
+              lista.style.display = 'block';
+            } else {
+              lista.style.display = 'none';
+            }
+          })
+          .catch(() => { lista.style.display = 'none'; });
+      }, 300);
+    }
+
+    function seleccionarSugerencia(lat, lon, nombre) {
+      document.getElementById('ubicacion-input').value = nombre;
+      document.getElementById('suggestions-list').style.display = 'none';
+      moverMapa(parseFloat(lat), parseFloat(lon), nombre);
+    }
+
+    function moverMapa(lat, lon, nombre) {
+      map.setView([lat, lon], 15);
+      if (marcadorActual) map.removeLayer(marcadorActual);
+      marcadorActual = L.marker([lat, lon]).addTo(map)
+        .bindPopup(`
+          <div style="font-size: 0.85rem; line-height: 1.4;">
+            <b style="color:#00f3ff;">Objetivo Oficial:</b><br>${nombre}<br><br>
+            <button class="hud-popup-btn" onclick="agregarFavorito('${nombre.replace(/'/g, "\\'")}', ${lat}, ${lon})">[+] Añadir a Favoritos</button>
+          </div>
+        `)
+        .openPopup();
+    }
+
+    function buscarLugarDirecto() {
       const query = document.getElementById('ubicacion-input').value;
       if (!query) return;
+      document.getElementById('suggestions-list').style.display = 'none';
 
       fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
         .then(res => res.json())
         .then(data => {
           if (data && data.length > 0) {
-            const lat = parseFloat(data[0].lat);
-            const lon = parseFloat(data[0].lon);
-            map.setView([lat, lon], 12);
-
-            if (marcadorActual) map.removeLayer(marcadorActual);
-            marcadorActual = L.marker([lat, lon]).addTo(map)
-              .bindPopup(`<b>Objetivo Oficial:</b><br>${data[0].display_name}`)
-              .openPopup();
+            moverMapa(parseFloat(data[0].lat), parseFloat(data[0].lon), data[0].display_name);
           } else {
             alert("Ubicación no encontrada en los registros.");
           }
@@ -255,7 +433,57 @@
     }
 
     function handleKeyPress(e) {
-      if (e.key === 'Enter') buscarLugar();
+      if (e.key === 'Enter') {
+        document.getElementById('suggestions-list').style.display = 'none';
+        buscarLugarDirecto();
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.search-box')) {
+        document.getElementById('suggestions-list').style.display = 'none';
+      }
+    });
+
+    function agregarFavorito(nombre, lat, lon) {
+      // Evitar duplicados exactos
+      if (!favoritos.some(f => f.lat === lat && f.lon === lon)) {
+        favoritos.push({ nombre, lat, lon });
+        localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos));
+        renderizarFavoritos();
+        alert("Objetivo guardado en favoritos.");
+      } else {
+        alert("Este objetivo ya está en favoritos.");
+      }
+    }
+
+    function eliminarFavorito(index) {
+      favoritos.splice(index, 1);
+      localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos));
+      renderizarFavoritos();
+    }
+
+    function renderizarFavoritos() {
+      const contenedor = document.getElementById('lista-favoritos');
+      const contador = document.getElementById('fav-count');
+      contenedor.innerHTML = '';
+      contador.textContent = favoritos.length;
+
+      if (favoritos.length === 0) {
+        contenedor.innerHTML = '<div style="font-size: 0.75rem; color: rgba(0,243,255,0.4); padding: 4px;">Sin objetivos guardados</div>';
+        return;
+      }
+
+      favoritos.forEach((fav, index) => {
+        const div = document.createElement('div');
+        div.className = 'fav-item';
+        div.innerHTML = `
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 210px;" onclick="moverMapa(${fav.lat}, ${fav.lon}, '${fav.nombre.replace(/'/g, "\\'")}')" title="${fav.nombre}">${fav.nombre}</span>
+          <button class="del-fav" onclick="event.stopPropagation(); eliminarFavorito(${index})">×</button>
+        `;
+        div.onclick = () => moverMapa(fav.lat, fav.lon, fav.nombre);
+        contenedor.appendChild(div);
+      });
     }
 
     function centrarMiUbicacion() {
@@ -266,12 +494,7 @@
       navigator.geolocation.getCurrentPosition(pos => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        map.setView([lat, lon], 14);
-
-        if (marcadorActual) map.removeLayer(marcadorActual);
-        marcadorActual = L.marker([lat, lon]).addTo(map)
-          .bindPopup("<b>Ubicación Actual (GPS Oficial)</b>")
-          .openPopup();
+        moverMapa(lat, lon, "Ubicación Actual (GPS Oficial)");
       }, () => {
         alert("No se pudo obtener tu ubicación.");
       }, { enableHighAccuracy: true });
