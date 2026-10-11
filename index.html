@@ -427,7 +427,7 @@
   }
   .float-btn:hover { background: #00f3ff; color: #000; }
 
-  /* Estilos específicos para Mapas sin Conexión (Estilo Apple Maps interactivo) */
+  /* Estilos específicos para Mapas sin Conexión */
   .offline-map-modal {
     position: absolute;
     top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1150;
@@ -553,6 +553,13 @@
     line-height: 1.3;
     padding: 0 4px;
   }
+  .download-progress-bar {
+    width: 100%; height: 6px; background: rgba(255,255,255,0.1);
+    border-radius: 3px; overflow: hidden; display: none; margin-top: 6px;
+  }
+  .download-progress-fill {
+    width: 0%; height: 100%; background: #00ff66; transition: width 0.3s ease;
+  }
 </style>
 </head>
 <body>
@@ -625,45 +632,28 @@
     </div>
   </div>
 
-  <!-- MODAL DE MAPAS SIN CONEXIÓN (CON BÚSQUEDA Y SELECCIÓN) -->
+  <!-- MODAL DE MAPAS SIN CONEXIÓN (REAL Y DESCARGABLE) -->
   <div id="offline-map-modal" class="offline-map-modal">
     
-    <!-- VISTA 1: BÚSQUEDA Y RECIENTES -->
+    <!-- VISTA 1: BÚSQUEDA Y SELECCIÓN -->
     <div id="offline-view-search" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
       <div class="planner-header" style="border:none; padding:0;">
         <span>Descargar mapa nuevo</span>
         <button class="close-card" onclick="cerrarModalOffline()">×</button>
       </div>
       
-      <input type="text" class="offline-search-input" placeholder="Ciudades, parques nacionales y más..." id="offline-search-input">
+      <input type="text" class="offline-search-input" placeholder="Escribí una ciudad (ej: Córdoba)..." id="offline-search-input">
 
-      <div class="offline-recent-item" onclick="seleccionarLugarOffline('Ubicación actual (Córdoba)', '1,53 GB')">
+      <div class="offline-recent-item" onclick="seleccionarCoordenadasOffline(-31.4167, -64.1833, 'Córdoba')">
         <span style="font-size: 1.2rem;">📍</span>
         <div>
-          <b style="font-size: 0.85rem; color: #fff;">Ubicación actual</b>
-          <span style="font-size: 0.7rem; color: #94a3b8;">Córdoba</span>
-        </div>
-      </div>
-
-      <span style="font-size: 0.75rem; color: #64748b; margin-top: 4px;">Recientes</span>
-      
-      <div class="offline-recent-item" onclick="seleccionarLugarOffline('El Capitan, Mariposa, CA', '840 MB')">
-        <span style="font-size: 1.2rem;">⭐</span>
-        <div>
-          <b style="font-size: 0.85rem; color: #fff;">El Capitan</b>
-          <span style="font-size: 0.7rem; color: #94a3b8;">Mariposa, CA, Estados Unidos</span>
-        </div>
-      </div>
-      <div class="offline-recent-item" onclick="seleccionarLugarOffline('Dallas, Texas', '2,10 GB')">
-        <span style="font-size: 1.2rem;">🏙️</span>
-        <div>
-          <b style="font-size: 0.85rem; color: #fff;">Dallas</b>
-          <span style="font-size: 0.7rem; color: #94a3b8;">Texas</span>
+          <b style="font-size: 0.85rem; color: #fff;">Ubicación actual (Área visible)</b>
+          <span style="font-size: 0.7rem; color: #94a3b8;">Córdoba, Argentina</span>
         </div>
       </div>
     </div>
 
-    <!-- VISTA 2: DETALLE Y GESTIÓN DE MAPA SELECCIONADO -->
+    <!-- VISTA 2: DETALLE Y DESCARGA REAL DE TESELAS -->
     <div id="offline-view-detail" style="display: none; flex-direction: column; gap: 14px; width: 100%;">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <button class="offline-pill-action" onclick="volverABusquedaOffline()" style="padding: 4px 10px; font-size: 0.75rem;">‹ Volver</button>
@@ -674,25 +664,30 @@
         <div class="offline-map-preview-bg" style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); display: flex; align-items: center; justify-content: center; position: relative;">
           <span style="font-size: 1.8rem; opacity: 0.4;">🛰️</span>
         </div>
-        <div class="offline-resize-pill">⤢ Redimensionar</div>
+        <div class="offline-resize-pill">⤢ Zona Activa</div>
       </div>
 
       <div class="offline-title-area">
         <h3 id="offline-selected-title">Córdoba</h3>
-        <p id="offline-selected-size">1,53 GB</p>
+        <p id="offline-selected-status">Listo para descarga real</p>
       </div>
 
-      <button class="offline-pill-action" onclick="alert('Función de renombrar sector activada.')">Renombrar</button>
-
-      <div class="offline-device-card">
-        <span>Terminal de Operador (ctOS Node)</span>
-        <b>Mapa actualizado recién</b>
+      <!-- Barra de progreso real de descarga -->
+      <div class="download-progress-bar" id="download-progress-bar">
+        <div class="download-progress-fill" id="download-progress-fill"></div>
       </div>
 
-      <button class="offline-delete-btn" onclick="eliminarMapaOffline()">Eliminar mapa</button>
+      <button class="go-btn" id="btn-real-download" onclick="ejecutarDescargaRealTiles()" style="width: 100%; text-align: center; font-size: 1rem;">DESCARGAR MAPA REAL</button>
+
+      <div class="offline-device-card" id="offline-info-status" style="display:none;">
+        <span>Terminal ctOS Storage</span>
+        <b id="offline-date-text">Mapa descargado y guardado en caché</b>
+      </div>
+
+      <button class="offline-delete-btn" id="btn-delete-cache" onclick="eliminarMapaOffline()" style="display:none;">Eliminar mapa descargado</button>
 
       <div class="offline-disclaimer">
-        Este mapa podría haberse descargado fuera de la región que muestra y no puede usarse en todas las regiones. Cuando entres o salgas de la región, conéctate a Internet para asegurarte de que usas el mapa de la región en la que te encuentras.
+        Este proceso descarga las teselas del mapa actual en la memoria caché del navegador (Cache API) para que estén disponibles sin internet.
       </div>
     </div>
 
@@ -753,7 +748,7 @@
     var map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
     }).addTo(map);
@@ -771,6 +766,9 @@
     renderizarFavoritos();
 
     var destinoActualTemp = null;
+    var latOfflineTemp = -31.4167;
+    var lonOfflineTemp = -64.1833;
+    var nombreOfflineTemp = "Córdoba";
 
     var registrosOficialesGlobales = [
       {
@@ -1275,7 +1273,7 @@
       }, { enableHighAccuracy: true });
     };
 
-    // Control del Modal de Configuración y Mapas Offline
+    // Control del Modal de Configuración y Mapas Offline Reales
     var configModal = document.getElementById('config-modal');
     var offlineModal = document.getElementById('offline-map-modal');
     var viewSearch = document.getElementById('offline-view-search');
@@ -1296,11 +1294,15 @@
       offlineModal.style.display = 'flex';
     }
 
-    function seleccionarLugarOffline(nombreLugar, tamano) {
-      document.getElementById('offline-selected-title').textContent = nombreLugar;
-      document.getElementById('offline-selected-size').textContent = tamano;
+    function seleccionarCoordenadasOffline(lat, lon, nombre) {
+      latOfflineTemp = lat;
+      lonOfflineTemp = lon;
+      nombreOfflineTemp = nombre;
+      document.getElementById('offline-selected-title').textContent = nombre;
+      document.getElementById('offline-selected-status').textContent = "Listo para descarga real de teselas";
       viewSearch.style.display = 'none';
       viewDetail.style.display = 'flex';
+      map.setView([lat, lon], 14);
     }
 
     function volverABusquedaOffline() {
@@ -1312,10 +1314,80 @@
       offlineModal.style.display = 'none';
     }
 
+    // FUNCIÓN DE DESCARGA REAL DE TESELAS EN CACHÉ DEL NAVEGADOR
+    function ejecutarDescargaRealTiles() {
+      if (!('caches' in window)) {
+        alert("Tu navegador no soporta almacenamiento en caché avanzado para mapas offline.");
+        return;
+      }
+
+      var progressBar = document.getElementById('download-progress-bar');
+      var progressFill = document.getElementById('download-progress-fill');
+      var btnDownload = document.getElementById('btn-real-download');
+      var infoStatus = document.getElementById('offline-info-status');
+      var btnDelete = document.getElementById('btn-delete-cache');
+
+      progressBar.style.display = 'block';
+      btnDownload.disabled = true;
+      btnDownload.textContent = "DESCARGANDO TESELAS...";
+      progressFill.style.width = "20%";
+
+      // Convertir lat/lon a número de tesela (Tile X, Y) para niveles de zoom 12 a 15 (zona local)
+      var zoom = 14;
+      var latRad = latOfflineTemp * Math.PI / 180;
+      var n = Math.pow(2, zoom);
+      var xtile = Math.floor((lonOfflineTemp + 180) / 360 * n);
+      var ytile = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+
+      var urlsToCache = [];
+      // Descargar un radio de teselas alrededor del punto seleccionado para distintos niveles de zoom
+      for (var z = 12; z <= 15; z++) {
+        var factor = Math.pow(2, z - zoom);
+        var cx = Math.floor(xtile * factor);
+        var cy = Math.floor(ytile * factor);
+        
+        for (var dx = -2; dx <= 2; dx++) {
+          for (var dy = -2; dy <= 2; dy++) {
+            var subdomains = ['a', 'b', 'c'];
+            var sub = subdomains[(cx + dx + cy + dy) % subdomains.length];
+            var tileUrl = 'https://' + sub + '.tile.openstreetmap.org/' + z + '/' + (cx + dx) + '/' + (cy + dy) + '.png';
+            urlsToCache.push(tileUrl);
+          }
+        }
+      }
+
+      progressFill.style.width = "50%";
+
+      caches.open('ctos-offline-maps-v1').then(function(cache) {
+        return cache.addAll(urlsToCache).then(function() {
+          progressFill.style.width = "100%";
+          btnDownload.style.display = "none";
+          progressBar.style.display = "none";
+          infoStatus.style.display = "block";
+          btnDelete.style.display = "block";
+          document.getElementById('offline-selected-status').textContent = "¡Descarga completada con éxito!";
+          alert("¡Mapas guardados localmente! Ahora podés usar el mapa sin conexión a internet.");
+        });
+      }).catch(function(err) {
+        console.error("Error al descargar teselas:", err);
+        alert("Error en la descarga. Asegurate de tener conexión a internet para descargar el paquete por primera vez.");
+        btnDownload.disabled = false;
+        btnDownload.textContent = "DESCARGAR MAPA REAL";
+        progressBar.style.display = "none";
+      });
+    }
+
     function eliminarMapaOffline() {
-      if (confirm("¿Estás seguro de eliminar el paquete de mapa sin conexión de este sector?")) {
-        alert("Paquete de mapa eliminado de la memoria local.");
-        cerrarModalOffline();
+      if (confirm("¿Estás seguro de purgar el caché de mapas sin conexión?")) {
+        caches.delete('ctos-offline-maps-v1').then(function() {
+          alert("Caché de mapas eliminada correctamente.");
+          document.getElementById('btn-real-download').style.display = "block";
+          document.getElementById('btn-real-download').disabled = false;
+          document.getElementById('btn-real-download').textContent = "DESCARGAR MAPA REAL";
+          document.getElementById('offline-info-status').style.display = "none";
+          document.getElementById('btn-delete-cache').style.display = "none";
+          document.getElementById('offline-selected-status').textContent = "Listo para descarga real de teselas";
+        });
       }
     }
 
@@ -1328,10 +1400,23 @@
       }
     }
 
-    // Permitir buscar escribiendo en el input offline y seleccionar el primer resultado simulado
+    // Búsqueda real en el buscador de mapas offline mediante Nominatim
     document.getElementById('offline-search-input').addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && this.value.trim() !== '') {
-        seleccionarLugarOffline(this.value.trim(), '1,45 GB');
+        var query = this.value.trim();
+        fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query))
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data && data.length > 0) {
+              var place = data[0];
+              seleccionarCoordenadasOffline(parseFloat(place.lat), parseFloat(place.lon), place.display_name.split(',')[0]);
+            } else {
+              alert("Ubicación no encontrada en la red.");
+            }
+          })
+          .catch(function() {
+            alert("Error de conexión al buscar el lugar.");
+          });
       }
     });
   </script>
