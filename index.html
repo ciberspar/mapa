@@ -99,16 +99,16 @@
     top: calc(100% + 4px); left: 0; right: 0;
     background: rgba(5, 12, 25, 0.98);
     border: 1px solid #00f3ff;
-    max-height: 180px;
+    max-height: 220px;
     overflow-y: auto;
     z-index: 1001;
     display: none;
     border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
   }
   .suggestion-item {
-    padding: 8px 10px;
-    font-size: 0.8rem;
+    padding: 9px 10px;
+    font-size: 0.78rem;
     color: #00f3ff;
     cursor: pointer;
     border-bottom: 1px solid rgba(0, 243, 255, 0.1);
@@ -117,7 +117,7 @@
     text-overflow: ellipsis;
   }
   .suggestion-item:hover {
-    background: rgba(0, 243, 255, 0.2);
+    background: rgba(0, 243, 255, 0.25);
     color: #fff;
   }
 
@@ -279,7 +279,7 @@
   <div class="hud-panel">
     <h3 class="hud-title">ctOS // SEC-GRID</h3>
     <div class="search-box">
-      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar lugar o dirección..." autocomplete="off">
+      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar lugar, complejo o dirección..." autocomplete="off">
       <button class="hud-btn" id="search-btn">Ir</button>
       <div id="suggestions-list"></div>
     </div>
@@ -394,7 +394,7 @@
       }
     };
 
-    // Clic en el mapa priorizando edificios/torres y lugares propios
+    // Clic en el mapa con priorización de edificios/complejos
     map.on('click', function(e) {
       var lat = e.latlng.lat;
       var lon = e.latlng.lng;
@@ -546,6 +546,7 @@
       }
     };
 
+    // Buscador global optimizado para complejos, edificios y comercios
     var inputUbicacion = document.getElementById('ubicacion-input');
     inputUbicacion.oninput = function() {
       var query = inputUbicacion.value;
@@ -559,21 +560,32 @@
       }
 
       timeoutBusqueda = setTimeout(function() {
-        fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5')
+        // Obtenemos los límites del área actual para priorizar la región visible
+        var bounds = map.getBounds();
+        var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
+
+        var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
+
+        fetch(searchUrl)
           .then(function(res) { return res.json(); })
           .then(function(data) {
             lista.innerHTML = '';
             if (data && data.length > 0) {
               data.forEach(function(item) {
+                var addr = item.address || {};
+                var nombreLugar = item.name || addr.building || addr.amenity || addr.shop || addr.residential || item.display_name.split(',')[0];
+                var tipoLugar = addr.building || addr.amenity || addr.shop || addr.residential || "Ubicación";
+
                 var div = document.createElement('div');
                 div.className = 'suggestion-item';
-                div.textContent = item.display_name;
+                div.innerHTML = '<strong>' + nombreLugar + '</strong> <span style="font-size:0.7rem; color:#94a3b8;">(' + tipoLugar + ')</span><br><span style="font-size:0.68rem; color:#00f3ff; opacity:0.8;">' + item.display_name + '</span>';
+                
                 div.onclick = function() {
-                  inputUbicacion.value = item.display_name;
+                  inputUbicacion.value = nombreLugar;
                   lista.style.display = 'none';
                   mostrarTarjetaLugar({
-                    nombre: item.display_name.split(',')[0],
-                    categoria: "Búsqueda",
+                    nombre: nombreLugar,
+                    categoria: tipoLugar.toUpperCase(),
                     direccion: item.display_name,
                     horario: "Abierto",
                     puntuacion: null,
@@ -589,8 +601,11 @@
             } else {
               lista.style.display = 'none';
             }
+          })
+          .catch(function(err) {
+            console.log("Error de búsqueda:", err);
           });
-      }, 350);
+      }, 300);
     };
 
     document.getElementById('search-btn').onclick = function() {
@@ -598,23 +613,32 @@
       if (!query) return;
       document.getElementById('suggestions-list').style.display = 'none';
 
-      fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=1')
+      var bounds = map.getBounds();
+      var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
+      var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
+
+      fetch(searchUrl)
         .then(function(res) { return res.json(); })
         .then(function(data) {
           if (data && data.length > 0) {
+            var item = data[0];
+            var addr = item.address || {};
+            var nombreLugar = item.name || addr.building || addr.amenity || addr.shop || addr.residential || item.display_name.split(',')[0];
+            var tipoLugar = addr.building || addr.amenity || addr.shop || addr.residential || "Búsqueda Directa";
+
             mostrarTarjetaLugar({
-              nombre: data[0].display_name.split(',')[0],
-              categoria: "Búsqueda Directa",
-              direccion: data[0].display_name,
+              nombre: nombreLugar,
+              categoria: tipoLugar.toUpperCase(),
+              direccion: item.display_name,
               horario: "Abierto",
               puntuacion: null,
               precio: "$$",
               telefono: null,
-              lat: parseFloat(data[0].lat),
-              lon: parseFloat(data[0].lon)
+              lat: parseFloat(item.lat),
+              lon: parseFloat(item.lon)
             });
           } else {
-            alert("Ubicación no encontrada.");
+            alert("Ubicación o complejo no encontrado.");
           }
         });
     };
