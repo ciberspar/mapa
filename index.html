@@ -209,6 +209,80 @@
   }
   .place-details-section div { display: flex; justify-content: space-between; align-items: center; }
 
+  /* --- BANNER DE NAVEGACIÓN ESTILO APPLE MAPS --- */
+  .nav-banner-top {
+    position: absolute;
+    top: 15px; left: 50%; transform: translateX(-50%); z-index: 1100;
+    width: 420px; max-width: calc(100% - 30px);
+    background: rgba(8, 15, 30, 0.95);
+    border: 1px solid #00f3ff;
+    border-radius: 14px;
+    padding: 14px 18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 15px rgba(0, 243, 255, 0.3);
+    display: none;
+    align-items: center;
+    gap: 14px;
+    backdrop-filter: blur(10px);
+  }
+  .nav-icon {
+    font-size: 2rem;
+    background: rgba(0, 243, 255, 0.15);
+    border: 1px solid #00f3ff;
+    border-radius: 50%;
+    width: 50px; height: 50px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-text h3 {
+    font-size: 0.95rem;
+    color: #fff;
+    margin: 0 0 4px 0;
+  }
+  .nav-text p {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px;
+  }
+
+  .nav-bar-bottom {
+    position: absolute;
+    bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1100;
+    width: 420px; max-width: calc(100% - 30px);
+    background: rgba(8, 15, 30, 0.95);
+    border: 1px solid #00f3ff;
+    border-radius: 16px;
+    padding: 12px 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 15px rgba(0, 243, 255, 0.3);
+    display: none;
+    justify-content: space-around;
+    align-items: center;
+    backdrop-filter: blur(10px);
+    text-align: center;
+  }
+  .nav-metric {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .nav-metric b {
+    font-size: 1.1rem;
+    color: #fff;
+    margin-top: 2px;
+  }
+  .nav-exit-btn {
+    background: #ff3366;
+    border: none; color: #fff;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .nav-exit-btn:hover { background: #e02456; }
+
   /* Panel de Favoritos Lateral */
   .fav-drawer {
     position: absolute;
@@ -275,6 +349,23 @@
 </style>
 </head>
 <body>
+
+  <!-- BANNER SUPERIOR DE NAVEGACIÓN -->
+  <div id="nav-banner-top" class="nav-banner-top">
+    <div class="nav-icon" id="nav-turn-icon">➔</div>
+    <div class="nav-text">
+      <h3 id="nav-instruction">En 100 metros, girar</h3>
+      <p id="nav-street-name">Nombre de calle</p>
+    </div>
+  </div>
+
+  <!-- BARRA INFERIOR DE NAVEGACIÓN -->
+  <div id="nav-bar-bottom" class="nav-bar-bottom">
+    <div class="nav-metric">Llegada <b id="nav-eta">--:--</b></div>
+    <div class="nav-metric">Tiempo <b id="nav-duration">-- min</b></div>
+    <div class="nav-metric">Distancia <b id="nav-distance">-- km</b></div>
+    <button class="nav-exit-btn" onclick="detenerNavegacion()">Salir</button>
+  </div>
 
   <div class="hud-panel">
     <h3 class="hud-title">ctOS // SEC-GRID</h3>
@@ -394,7 +485,6 @@
       }
     };
 
-    // Clic en el mapa con priorización de edificios/complejos
     map.on('click', function(e) {
       var lat = e.latlng.lat;
       var lon = e.latlng.lng;
@@ -403,12 +493,10 @@
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var addr = data.address || {};
-          
           var nombrePropio = data.name || addr.building || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.residential;
           var titulo = nombrePropio ? nombrePropio : (addr.road ? addr.road : "Punto de Interés");
           var categoria = addr.building || addr.residential || addr.amenity || "Edificio / Urbanización";
           var direccion = data.display_name || "Sin dirección exacta";
-
           var precioSimulado = (addr.shop || addr.amenity === 'restaurant') ? "$$$" : "--";
 
           mostrarTarjetaLugar({
@@ -423,12 +511,10 @@
             lon: lon
           });
         })
-        .catch(function(err) {
-          console.log("Error de red:", err);
-        });
+        .catch(function(err) { console.log("Error de red:", err); });
     });
 
-    function calcularRutaPropia(destLat, destLon) {
+    function calcularRutaPropia(destLat, destLon, destinoNombre) {
       if (!navigator.geolocation) {
         alert("Geolocalización no soportada.");
         return;
@@ -438,32 +524,60 @@
         var startLat = pos.coords.latitude;
         var startLon = pos.coords.longitude;
 
-        var url = 'https://router.project-osrm.org/route/v1/driving/' + startLon + ',' + startLat + ';' + destLon + ',' + destLat + '?overview=full&geometries=geojson';
+        var url = 'https://router.project-osrm.org/route/v1/driving/' + startLon + ',' + startLat + ';' + destLon + ',' + destLat + '?overview=full&geometries=geojson&steps=true';
 
         fetch(url)
           .then(function(res) { return res.json(); })
           .then(function(data) {
             if (data.routes && data.routes.length > 0) {
-              var routeGeoJson = data.routes[0].geometry;
+              var route = data.routes[0];
+              var routeGeoJson = route.geometry;
 
               if (routingLayer) {
                 map.removeLayer(routingLayer);
               }
 
               routingLayer = L.geoJSON(routeGeoJson, {
-                style: {
-                  color: '#00f3ff',
-                  weight: 5,
-                  opacity: 0.8
-                }
+                style: { color: '#00f3ff', weight: 6, opacity: 0.9 }
               }).addTo(map);
 
-              map.fitBounds(routingLayer.getBounds(), { padding: [50, 50] });
+              map.fitBounds(routingLayer.getBounds(), { padding: [60, 60] });
               document.getElementById('place-card').style.display = 'none';
+
+              // Calcular métricas para el panel de navegación
+              var distanciaKm = (route.distance / 1000).toFixed(1) + ' km';
+              var duracionMin = Math.round(route.duration / 60) + ' min';
               
-              var distanciaKm = (data.routes[0].distance / 1000).toFixed(1);
-              var duracionMin = Math.round(data.routes[0].duration / 60);
-              alert("¡Ruta trazada en ctOS! Distancia: " + distanciaKm + " km (~" + duracionMin + " min).");
+              // Calcular hora estimada de llegada (ETA)
+              var ahora = new Date();
+              ahora.setMinutes(ahora.getMinutes() + Math.round(route.duration / 60));
+              var horaLlegada = ('0' + ahora.getHours()).slice(-2) + ':' + ('0' + ahora.getMinutes()).slice(-2);
+
+              // Extraer el primer paso de navegación si existe
+              var instruction = "Dirigirse hacia el objetivo";
+              var iconSymbol = "➔";
+              if (route.legs && route.legs[0].steps && route.legs[0].steps.length > 0) {
+                var primerPaso = route.legs[0].steps[0];
+                if (primerPaso.maneuver) {
+                  var tipo = primerPaso.maneuver.type;
+                  if (tipo.includes('turn')) iconSymbol = "⮠";
+                  else if (tipo.includes('roundabout')) iconSymbol = "⟳";
+                  else iconSymbol = "⬆";
+                }
+                instruction = primerPaso.name ? "En " + primerPaso.name : "Continuar en la ruta";
+              }
+
+              // Mostrar paneles de navegación estilo Apple Maps
+              document.getElementById('nav-instruction').textContent = instruction;
+              document.getElementById('nav-street-name').textContent = "Destino: " + destinoNombre;
+              document.getElementById('nav-turn-icon').textContent = iconSymbol;
+              
+              document.getElementById('nav-eta').textContent = horaLlegada;
+              document.getElementById('nav-duration').textContent = duracionMin;
+              document.getElementById('nav-distance').textContent = distanciaKm;
+
+              document.getElementById('nav-banner-top').style.display = 'flex';
+              document.getElementById('nav-bar-bottom').style.display = 'flex';
             } else {
               alert("No se pudo calcular una ruta para vehículos.");
             }
@@ -475,6 +589,15 @@
       }, function() {
         alert("Activá el GPS para calcular la ruta.");
       }, { enableHighAccuracy: true });
+    }
+
+    function detenerNavegacion() {
+      if (routingLayer) {
+        map.removeLayer(routingLayer);
+        routingLayer = null;
+      }
+      document.getElementById('nav-banner-top').style.display = 'none';
+      document.getElementById('nav-bar-bottom').style.display = 'none';
     }
 
     function mostrarTarjetaLugar(info) {
@@ -509,7 +632,7 @@
       var dirBtn = document.getElementById('card-directions-btn');
       dirBtn.onclick = function(e) {
         e.preventDefault();
-        calcularRutaPropia(info.lat, info.lon);
+        calcularRutaPropia(info.lat, info.lon, info.nombre);
       };
 
       var favBtn = document.getElementById('card-fav-btn');
@@ -546,7 +669,6 @@
       }
     };
 
-    // Buscador global optimizado para complejos, edificios y comercios
     var inputUbicacion = document.getElementById('ubicacion-input');
     inputUbicacion.oninput = function() {
       var query = inputUbicacion.value;
@@ -560,10 +682,8 @@
       }
 
       timeoutBusqueda = setTimeout(function() {
-        // Obtenemos los límites del área actual para priorizar la región visible
         var bounds = map.getBounds();
         var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
-
         var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
 
         fetch(searchUrl)
@@ -602,9 +722,7 @@
               lista.style.display = 'none';
             }
           })
-          .catch(function(err) {
-            console.log("Error de búsqueda:", err);
-          });
+          .catch(function(err) { console.log("Error de búsqueda:", err); });
       }, 300);
     };
 
