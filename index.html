@@ -41,6 +41,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    transition: opacity 0.3s ease, transform 0.3s ease;
   }
   .hud-title {
     font-size: 0.9rem;
@@ -295,6 +296,7 @@
     max-height: 300px;
     display: flex;
     flex-direction: column;
+    transition: opacity 0.3s ease, transform 0.3s ease;
   }
   .fav-header {
     font-size: 0.8rem;
@@ -367,7 +369,7 @@
     <button class="nav-exit-btn" onclick="detenerNavegacion()">Salir</button>
   </div>
 
-  <div class="hud-panel">
+  <div class="hud-panel" id="hud-panel">
     <h3 class="hud-title">ctOS // SEC-GRID</h3>
     <div class="search-box">
       <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar lugar, complejo o dirección..." autocomplete="off">
@@ -404,7 +406,7 @@
     </div>
   </div>
 
-  <div class="fav-drawer">
+  <div class="fav-drawer" id="fav-drawer">
     <div class="fav-header"><span>// FAVORITOS</span><span id="fav-count">0</span></div>
     <div class="fav-list" id="lista-favoritos"></div>
   </div>
@@ -427,7 +429,9 @@
     }).addTo(map);
 
     var marcadorActual = null;
+    var marcadorUsuario = null;
     var routingLayer = null;
+    var watchId = null;
     var capaOficialesGrupo = L.layerGroup();
     var datosOficialesActivos = false;
     var timeoutBusqueda = null;
@@ -544,16 +548,18 @@
               map.fitBounds(routingLayer.getBounds(), { padding: [60, 60] });
               document.getElementById('place-card').style.display = 'none';
 
-              // Calcular métricas para el panel de navegación
+              // Ocultar HUD principal y favoritos durante la navegación
+              document.getElementById('hud-panel').style.display = 'none';
+              document.getElementById('fav-drawer').style.display = 'none';
+
+              // Calcular métricas
               var distanciaKm = (route.distance / 1000).toFixed(1) + ' km';
               var duracionMin = Math.round(route.duration / 60) + ' min';
               
-              // Calcular hora estimada de llegada (ETA)
               var ahora = new Date();
               ahora.setMinutes(ahora.getMinutes() + Math.round(route.duration / 60));
               var horaLlegada = ('0' + ahora.getHours()).slice(-2) + ':' + ('0' + ahora.getMinutes()).slice(-2);
 
-              // Extraer el primer paso de navegación si existe
               var instruction = "Dirigirse hacia el objetivo";
               var iconSymbol = "➔";
               if (route.legs && route.legs[0].steps && route.legs[0].steps.length > 0) {
@@ -567,7 +573,6 @@
                 instruction = primerPaso.name ? "En " + primerPaso.name : "Continuar en la ruta";
               }
 
-              // Mostrar paneles de navegación estilo Apple Maps
               document.getElementById('nav-instruction').textContent = instruction;
               document.getElementById('nav-street-name').textContent = "Destino: " + destinoNombre;
               document.getElementById('nav-turn-icon').textContent = iconSymbol;
@@ -578,6 +583,9 @@
 
               document.getElementById('nav-banner-top').style.display = 'flex';
               document.getElementById('nav-bar-bottom').style.display = 'flex';
+
+              // Iniciar seguimiento GPS en tiempo real
+              iniciarSeguimientoVivo();
             } else {
               alert("No se pudo calcular una ruta para vehículos.");
             }
@@ -591,13 +599,56 @@
       }, { enableHighAccuracy: true });
     }
 
+    function iniciarSeguimientoVivo() {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+
+      watchId = navigator.geolocation.watchPosition(function(pos) {
+        var userLat = pos.coords.latitude;
+        var userLon = pos.coords.longitude;
+
+        if (!marcadorUsuario) {
+          marcadorUsuario = L.circleMarker([userLat, userLon], {
+            radius: 9,
+            fillColor: '#00f3ff',
+            color: '#ffffff',
+            weight: 3,
+            fillOpacity: 1
+          }).addTo(map);
+        } else {
+          marcadorUsuario.setLatLng([userLat, userLon]);
+        }
+
+        // Seguir al usuario desplazando la cámara
+        map.panTo([userLat, userLon], { animate: true, duration: 1 });
+      }, function(err) {
+        console.log("Error de rastreo GPS:", err);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000
+      });
+    }
+
     function detenerNavegacion() {
       if (routingLayer) {
         map.removeLayer(routingLayer);
         routingLayer = null;
       }
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (marcadorUsuario) {
+        map.removeLayer(marcadorUsuario);
+        marcadorUsuario = null;
+      }
+
       document.getElementById('nav-banner-top').style.display = 'none';
       document.getElementById('nav-bar-bottom').style.display = 'none';
+
+      // Volver a mostrar el HUD y los Favoritos
+      document.getElementById('hud-panel').style.display = 'flex';
+      document.getElementById('fav-drawer').style.display = 'flex';
     }
 
     function mostrarTarjetaLugar(info) {
