@@ -23,20 +23,20 @@
     background: #050811;
   }
   
-  /* Filtro ciberpunk para el mapa mundial */
+  /* Filtro ciberpunk para el mapa */
   .leaflet-layer {
     filter: brightness(0.55) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.35);
   }
 
-  /* Panel de Control HUD */
+  /* Panel de Control HUD Principal */
   .hud-panel {
     position: absolute;
-    top: 15px; left: 15px; right: 15px; z-index: 1000;
-    max-width: 420px;
+    top: 15px; left: 15px; z-index: 1000;
+    max-width: 420px; width: calc(100% - 30px);
     background: rgba(5, 12, 25, 0.95);
     border: 1px solid #00f3ff;
     padding: 12px;
-    border-radius: 4px;
+    border-radius: 6px;
     box-shadow: 0 0 15px rgba(0, 243, 255, 0.25);
     display: flex;
     flex-direction: column;
@@ -99,7 +99,7 @@
     box-shadow: 0 0 10px #00ff66;
   }
 
-  /* Lista de sugerencias de autocompletado */
+  /* Lista de sugerencias */
   #suggestions-list {
     position: absolute;
     top: calc(100% + 4px); left: 0; right: 0;
@@ -127,14 +127,106 @@
     color: #fff;
   }
 
-  /* Panel de Favoritos Lateral */
+  /* --- TARJETA DE DETALLES ESTILO APPLE MAPS (INFERIOR IZQUIERDA / FLOTANTE) --- */
+  .place-card {
+    position: absolute;
+    bottom: 20px; left: 15px; z-index: 1000;
+    width: 360px;
+    background: rgba(8, 15, 30, 0.96);
+    border: 1px solid #00f3ff;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 243, 255, 0.2);
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    backdrop-filter: blur(10px);
+    animation: slideUp 0.3s ease-out;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .place-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .place-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #fff;
+    margin: 0;
+  }
+  .place-category {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 2px;
+  }
+  .close-card {
+    background: rgba(255,255,255,0.1);
+    border: none; color: #fff;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold;
+  }
+  .close-card:hover { background: #ff3366; }
+
+  .place-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .action-btn {
+    background: rgba(0, 243, 255, 0.15);
+    border: 1px solid #00f3ff;
+    color: #00f3ff;
+    padding: 8px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: center;
+    font-weight: bold;
+    text-decoration: none;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .action-btn:hover { background: #00f3ff; color: #000; }
+
+  .place-info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: rgba(0,0,0,0.3);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.7rem;
+    border: 1px solid rgba(0, 243, 255, 0.15);
+  }
+  .info-cell b { display: block; color: #fff; font-size: 0.75rem; margin-top: 2px; }
+
+  .place-details-section {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-top: 1px solid rgba(0, 243, 255, 0.2);
+    padding-top: 8px;
+  }
+  .place-details-section div { display: flex; justify-content: space-between; }
+
+  /* Panel de Favoritos Lateral Derecho */
   .fav-drawer {
     position: absolute;
     top: 15px; right: 15px; z-index: 1000;
     width: 280px;
     background: rgba(5, 12, 25, 0.95);
     border: 1px solid #00f3ff;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 10px;
     box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
     max-height: 350px;
@@ -168,17 +260,8 @@
     justify-content: space-between;
     align-items: center;
   }
-  .fav-item:hover {
-    background: rgba(0, 243, 255, 0.2);
-    color: #fff;
-  }
-  .del-fav {
-    background: none;
-    border: none;
-    color: #ff3366;
-    cursor: pointer;
-    font-weight: bold;
-  }
+  .fav-item:hover { background: rgba(0, 243, 255, 0.2); color: #fff; }
+  .del-fav { background: none; border: none; color: #ff3366; cursor: pointer; font-weight: bold; }
 
   /* Botones flotantes */
   .floating-controls {
@@ -196,64 +279,59 @@
     border-radius: 50%;
     font-size: 1.1rem;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
     transition: all 0.2s;
   }
-  .float-btn:hover {
-    background: #00f3ff;
-    color: #000;
-  }
-
-  /* Popups de Terminal */
-  .leaflet-popup-content-wrapper {
-    background: rgba(5, 12, 25, 0.95) !important;
-    color: #fff !important;
-    border: 1px solid #00f3ff;
-    border-radius: 4px;
-    font-family: monospace;
-  }
-  .leaflet-popup-tip { background: #00f3ff !important; }
+  .float-btn:hover { background: #00f3ff; color: #000; }
   .official-tag { color: #00ff66; font-size: 0.75rem; font-weight: bold; }
-  
-  .hud-popup-btn {
-    margin-top: 6px;
-    background: rgba(0, 243, 255, 0.2);
-    border: 1px solid #00f3ff;
-    color: #00f3ff;
-    padding: 4px 8px;
-    cursor: pointer;
-    font-family: monospace;
-    font-size: 0.75rem;
-    border-radius: 2px;
-    width: 100%;
-  }
-  .hud-popup-btn:hover {
-    background: #00f3ff;
-    color: #000;
-  }
 </style>
 </head>
 <body>
 
+  <!-- Buscador e interfaz superior -->
   <div class="hud-panel">
     <h3 class="hud-title">ctOS // OFFICIAL DATA GRID</h3>
     <div class="search-box">
-      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar país, ciudad o calle..." autocomplete="off" oninput="sugerirLugares(this.value)" onkeypress="handleKeyPress(event)">
+      <input type="text" id="ubicacion-input" class="hud-input" placeholder="Buscar lugar, comercio o dirección..." autocomplete="off" oninput="sugerirLugares(this.value)" onkeypress="handleKeyPress(event)">
       <button class="hud-btn" onclick="buscarLugarDirecto()">Ir</button>
       <div id="suggestions-list"></div>
     </div>
     <button class="hud-btn official" id="btn-toggle-oficial" onclick="toggleCapasOficiales()" style="margin-top: 4px;">Sincronizar Datos Oficiales (GeoJSON)</button>
   </div>
 
-  <!-- Panel de Favoritos -->
+  <!-- TARJETA DE LUGAR ESTILO APPLE MAPS -->
+  <div id="place-card" class="place-card">
+    <div class="place-card-header">
+      <div>
+        <h4 id="card-title" class="place-title">Nombre del Lugar</h4>
+        <span id="card-category" class="place-category">Categoría / Tipo de establecimiento</span>
+      </div>
+      <button class="close-card" onclick="cerrarTarjetaLugar()">×</button>
+    </div>
+
+    <div class="place-actions">
+      <a id="card-directions-btn" href="#" target="_blank" class="action-btn">🧭 Cómo llegar</a>
+      <button class="action-btn" id="card-fav-btn">[+] Favorito</button>
+    </div>
+
+    <div class="place-info-grid">
+      <div class="info-cell">Horario<b id="card-hours" style="color: #00ff66;">Abierto</b></div>
+      <div class="info-cell">Calificación<b id="card-rating">⭐ 4.2</b></div>
+      <div class="info-cell">Precios<b id="card-price" style="color: #facc15;">$$</b></div>
+      <div class="info-cell">Distancia<b id="card-dist">--</b></div>
+    </div>
+
+    <div class="place-details-section">
+      <div><span>Dirección:</span> <span id="card-address" style="color:#fff; text-align:right; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">--</span></div>
+      <div><span>Teléfono:</span> <span id="card-phone" style="color:#fff;">No disponible</span></div>
+    </div>
+  </div>
+
+  <!-- Panel de Favoritos Lateral -->
   <div class="fav-drawer">
     <div class="fav-header"><span>// OBJETIVOS FAVORITOS</span><span id="fav-count">0</span></div>
-    <div class="fav-list" id="lista-favoritos">
-      <!-- Se llena por JS -->
-    </div>
+    <div class="fav-list" id="lista-favoritos"></div>
   </div>
 
   <div id="map"></div>
@@ -278,7 +356,6 @@
     let datosOficialesActivos = false;
     let timeoutBusqueda = null;
     
-    // Almacenamiento local de favoritos
     let favoritos = JSON.parse(localStorage.getItem('ctos_favoritos')) || [];
     renderizarFavoritos();
 
@@ -312,14 +389,19 @@
           });
         },
         onEachFeature: function (feature, layer) {
-          layer.bindPopup(`
-            <div style="font-size: 0.85rem; line-height: 1.4;">
-              <span class="official-tag">[FUENTES OFICIALES]</span><br>
-              <b style="color:#00f3ff;">${feature.properties.entidad}</b><br>
-              <b>Fuente:</b> ${feature.properties.fuente}<br><br>
-              <em>${feature.properties.desc}</em>
-            </div>
-          `);
+          layer.on('click', () => {
+            mostrarTarjetaLugar({
+              nombre: feature.properties.entidad,
+              categoria: feature.properties.fuente,
+              direccion: feature.properties.desc,
+              horario: "24/7 Oficial",
+              calificacion: "⭐ 5.0",
+              precio: "N/A",
+              telefono: "N/A",
+              lat: latlng.lat,
+              lon: latlng.lng
+            });
+          });
         }
       }).addTo(capaOficialesGrupo);
     }
@@ -339,32 +421,76 @@
       }
     }
 
-    // Evento de clic en el mapa (Reverse Geocoding seguro)
+    // Al hacer clic en el mapa, consultamos el punto exacto priorizando lugares y establecimientos
     map.on('click', function(e) {
       const lat = e.latlng.lat;
       const lon = e.latlng.lng;
 
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+      // zoom=18 para buscar nombres específicos de negocios o edificios
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`)
         .then(res => res.json())
         .then(data => {
-          const nombreLugar = data.display_name || "Ubicación sin registro exacto";
-          const nombreSeguro = nombreLugar.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          let addr = data.address || {};
+          let nombreLugar = addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || addr.office || addr.commercial || data.name;
           
-          if (marcadorActual) map.removeLayer(marcadorActual);
-          marcadorActual = L.marker([lat, lon]).addTo(map)
-            .bindPopup(`
-              <div style="font-size: 0.85rem; line-height: 1.4;">
-                <b style="color:#00f3ff;">[ANÁLISIS DE CALLE / SECTOR]</b><br>
-                ${nombreLugar}<br><br>
-                <button class="hud-popup-btn" onclick="agregarFavorito('${nombreSeguro}', ${lat}, ${lon})">[+] Añadir a Favoritos</button>
-              </div>
-            `)
-            .openPopup();
+          let titulo = nombreLugar ? nombreLugar : (data.display_name.split(',')[0] || "Punto de Interés");
+          let categoria = addr.amenity || addr.shop || addr.building || "Lugar / Sector urbano";
+          let direccionCompleta = data.display_name || "Dirección no especificada";
+
+          // Simulación inteligente de precios basada en tipo de lugar (si aplica)
+          let precioSimulado = "$$";           if (addr.shop \vert{}\vert{} addr.amenity === 'restaurant' \vert{}\vert{} addr.amenity === 'cafe') {             precioSimulado = Math.random() > 0.5 ? "$$$" : "$$";
+          } else {
+            precioSimulado = "Gratis / N/A";
+          }
+
+          mostrarTarjetaLugar({
+            nombre: titulo,
+            categoria: categoria.toUpperCase(),
+            direccion: direccionCompleta,
+            horario: "08:00 - 21:00",
+            calificacion: "⭐ 4.3",
+            precio: precioSimulado,
+            telefono: "+54 351 " + Math.floor(1000000 + Math.random() * 9000000),
+            lat: lat,
+            lon: lon
+          });
         })
         .catch(() => {
           alert("Error al conectar con la red de mapeo.");
         });
     });
+
+    function mostrarTarjetaLugar(info) {
+      if (marcadorActual) map.removeLayer(marcadorActual);
+      marcadorActual = L.marker([info.lat, info.lon]).addTo(map);
+      map.setView([info.lat, info.lon], 16);
+
+      document.getElementById('card-title').textContent = info.nombre;
+      document.getElementById('card-category').textContent = info.categoria;
+      document.getElementById('card-address').textContent = info.direccion;
+      document.getElementById('card-address').title = info.direccion;
+      document.getElementById('card-hours').textContent = info.horario;
+      document.getElementById('card-rating').textContent = info.calificacion;
+      document.getElementById('card-price').textContent = info.precio;
+      document.getElementById('card-phone').textContent = info.telefono;
+
+      // Enlace de Cómo llegar (Google Maps / OpenStreetMap directions)
+      document.getElementById('card-directions-btn').href = `https://www.google.com/maps/dir/?api=1&destination=${info.lat},${info.lon}`;
+
+      // Botón de Favorito
+      const favBtn = document.getElementById('card-fav-btn');
+      favBtn.onclick = () => agregarFavorito(info.nombre, info.lat, info.lon);
+
+      document.getElementById('place-card').style.display = 'flex';
+    }
+
+    function cerrarTarjetaLugar() {
+      document.getElementById('place-card').style.display = 'none';
+      if (marcadorActual) {
+        map.removeLayer(marcadorActual);
+        marcadorActual = null;
+      }
+    }
 
     function sugerirLugares(query) {
       clearTimeout(timeoutBusqueda);
@@ -401,21 +527,18 @@
     function seleccionarSugerencia(lat, lon, nombre) {
       document.getElementById('ubicacion-input').value = nombre;
       document.getElementById('suggestions-list').style.display = 'none';
-      moverMapa(parseFloat(lat), parseFloat(lon), nombre);
-    }
-
-    function moverMapa(lat, lon, nombre) {
-      map.setView([lat, lon], 15);
-      const nombreSeguro = nombre.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-      if (marcadorActual) map.removeLayer(marcadorActual);
-      marcadorActual = L.marker([lat, lon]).addTo(map)
-        .bindPopup(`
-          <div style="font-size: 0.85rem; line-height: 1.4;">
-            <b style="color:#00f3ff;">Objetivo Oficial:</b><br>${nombre}<br><br>
-            <button class="hud-popup-btn" onclick="agregarFavorito('${nombreSeguro}', ${lat}, ${lon})">[+] Añadir a Favoritos</button>
-          </div>
-        `)
-        .openPopup();
+      
+      mostrarTarjetaLugar({
+        nombre: nombre.split(',')[0],
+        categoria: "Ubicación de Búsqueda",
+        direccion: nombre,
+        horario: "Abierto",
+        calificacion: "⭐ 4.5",
+        precio: "$$",
+        telefono: "N/A",
+        lat: parseFloat(lat),
+        lon: parseFloat(lon)
+      });
     }
 
     function buscarLugarDirecto() {
@@ -427,7 +550,7 @@
         .then(res => res.json())
         .then(data => {
           if (data && data.length > 0) {
-            moverMapa(parseFloat(data[0].lat), parseFloat(data[0].lon), data[0].display_name);
+            seleccionarSugerencia(data[0].lat, data[0].lon, data[0].display_name);
           } else {
             alert("Ubicación no encontrada en los registros.");
           }
@@ -442,7 +565,7 @@
     }
 
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('.search-box')) {
+      if (!e.target.closest('.search-box') && !e.target.closest('#place-card')) {
         document.getElementById('suggestions-list').style.display = 'none';
       }
     });
@@ -478,12 +601,23 @@
       favoritos.forEach((fav, index) => {
         const div = document.createElement('div');
         div.className = 'fav-item';
-        const nombreSeguro = fav.nombre.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         div.innerHTML = `
           <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 210px;" title="${fav.nombre}">${fav.nombre}</span>
           <button class="del-fav" onclick="event.stopPropagation(); eliminarFavorito(${index})">×</button>
         `;
-        div.onclick = () => moverMapa(fav.lat, fav.lon, fav.nombre);
+        div.onclick = () => {
+          mostrarTarjetaLugar({
+            nombre: fav.nombre.split(',')[0],
+            categoria: "Objetivo Favorito",
+            direccion: fav.nombre,
+            horario: "N/A",
+            calificacion: "⭐ 5.0",
+            precio: "$$",
+            telefono: "N/A",
+            lat: fav.lat,
+            lon: fav.lon
+          });
+        };
         contenedor.appendChild(div);
       });
     }
@@ -494,21 +628,20 @@
         return;
       }
       navigator.geolocation.getCurrentPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        moverMapa(lat, lon, "Ubicación Actual (GPS Oficial)");
+        mostrarTarjetaLugar({
+          nombre: "Ubicación Actual (GPS Oficial)",
+          categoria: "Posición del Operador",
+          direccion: "Coordenadas GPS en vivo",
+          horario: "Activo",
+          calificacion: "⭐ N/A",
+          precio: "N/A",
+          telefono: "N/A",
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude
+        });
       }, () => {
         alert("No se pudo obtener tu ubicación.");
       }, { enableHighAccuracy: true });
-    }
-  </script>
-
-  <!-- Service Worker PWA -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => console.log("SW error", err));
-      });
     }
   </script>
 </body>
