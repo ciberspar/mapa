@@ -41,7 +41,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    transition: opacity 0.3s ease, transform 0.3s ease;
   }
   .hud-title {
     font-size: 0.9rem;
@@ -210,7 +209,85 @@
   }
   .place-details-section div { display: flex; justify-content: space-between; align-items: center; }
 
-  /* --- BANNER DE NAVEGACIÓN ESTILO APPLE MAPS --- */
+  /* --- MODAL / PANTALLA PREVIA DE "CÓMO LLEGAR" --- */
+  .route-planner-modal {
+    position: absolute;
+    bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1050;
+    width: 420px; max-width: calc(100% - 30px);
+    background: rgba(8, 15, 30, 0.98);
+    border: 1px solid #00f3ff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.9), 0 0 25px rgba(0, 243, 255, 0.3);
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    backdrop-filter: blur(10px);
+  }
+  .planner-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #fff;
+    border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+    padding-bottom: 8px;
+  }
+  .planner-inputs {
+    background: rgba(0, 243, 255, 0.05);
+    border: 1px solid rgba(0, 243, 255, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.8rem;
+  }
+  .planner-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .planner-row span { color: #38bdf8; font-weight: bold; }
+  .planner-row input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #fff;
+    outline: none;
+    font-family: monospace;
+    font-size: 0.8rem;
+  }
+  .planner-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.4);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 243, 255, 0.2);
+  }
+  .planner-info {
+    font-size: 0.8rem;
+    color: #94a3b8;
+  }
+  .planner-info b { display: block; color: #fff; font-size: 1rem; }
+  .go-btn {
+    background: #00ff66;
+    border: none;
+    color: #000;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding: 10px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
+  }
+  .go-btn:hover { background: #00cc52; }
+
+  /* --- BANNER DE NAVEGACIÓN ACTIVA --- */
   .nav-banner-top {
     position: absolute;
     top: 15px; left: 50%; transform: translateX(-50%); z-index: 1100;
@@ -369,6 +446,31 @@
     <button class="nav-exit-btn" onclick="detenerNavegacion()">Salir</button>
   </div>
 
+  <!-- MODAL PREVIO DE CÓMO LLEGAR (ESTILO APPLE MAPS) -->
+  <div id="route-planner-modal" class="route-planner-modal">
+    <div class="planner-header">
+      <span>Cómo llegar</span>
+      <button class="close-card" onclick="cerrarPlanner()">×</button>
+    </div>
+    <div class="planner-inputs">
+      <div class="planner-row">
+        <span>📍</span>
+        <input type="text" id="planner-origin" value="Mi ubicación actual (GPS)" readonly>
+      </div>
+      <div class="planner-row">
+        <span>🏁</span>
+        <input type="text" id="planner-destination" value="" readonly>
+      </div>
+    </div>
+    <div class="planner-footer">
+      <div class="planner-info">
+        <span id="planner-time">Calculando...</span>
+        <b id="planner-dist">-- km</b>
+      </div>
+      <button class="go-btn" id="planner-go-btn">IR</button>
+    </div>
+  </div>
+
   <div class="hud-panel" id="hud-panel">
     <h3 class="hud-title">ctOS // SEC-GRID</h3>
     <div class="search-box">
@@ -432,12 +534,15 @@
     var marcadorUsuario = null;
     var routingLayer = null;
     var watchId = null;
+    var routeSteps = [];
     var capaOficialesGrupo = L.layerGroup();
     var datosOficialesActivos = false;
     var timeoutBusqueda = null;
     
     var favoritos = JSON.parse(localStorage.getItem('ctos_favoritos')) || [];
     renderizarFavoritos();
+
+    var destinoActualTemp = null;
 
     var registrosOficialesGlobales = [
       {
@@ -518,7 +623,43 @@
         .catch(function(err) { console.log("Error de red:", err); });
     });
 
-    function calcularRutaPropia(destLat, destLon, destinoNombre) {
+    // 1. Mostrar modal previo "Cómo llegar" (con botón IR)
+    function abrirPlannerRuta(lat, lon, nombre) {
+      destinoActualTemp = { lat: lat, lon: lon, nombre: nombre };
+      document.getElementById('place-card').style.display = 'none';
+      document.getElementById('planner-destination').value = nombre;
+      document.getElementById('route-planner-modal').style.display = 'flex';
+
+      // Calcular previamente distancia y tiempo aproximado
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        var url = 'https://router.project-osrm.org/route/v1/driving/' + pos.coords.longitude + ',' + pos.coords.latitude + ';' + lon + ',' + lat + '?overview=false';
+        fetch(url)
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data.routes && data.routes.length > 0) {
+              var r = data.routes[0];
+              var dist = (r.distance / 1000).toFixed(1) + ' km';
+              var mins = Math.round(r.duration / 60) + ' min';
+              document.getElementById('planner-time').textContent = mins + ' más rápida';
+              document.getElementById('planner-dist').textContent = dist;
+            }
+          });
+      });
+    }
+
+    function cerrarPlanner() {
+      document.getElementById('route-planner-modal').style.display = 'none';
+    }
+
+    // Al pulsar el botón verde "IR"
+    document.getElementById('planner-go-btn').onclick = function() {
+      if (!destinoActualTemp) return;
+      cerrarPlanner();
+      iniciarNavegacionEnVivo(destinoActualTemp.lat, destinoActualTemp.lon, destinoActualTemp.nombre);
+    };
+
+    function iniciarNavegacionEnVivo(destLat, destLon, destinoNombre) {
       if (!navigator.geolocation) {
         alert("Geolocalización no soportada.");
         return;
@@ -536,6 +677,7 @@
             if (data.routes && data.routes.length > 0) {
               var route = data.routes[0];
               var routeGeoJson = route.geometry;
+              routeSteps = route.legs[0].steps || [];
 
               if (routingLayer) {
                 map.removeLayer(routingLayer);
@@ -546,13 +688,11 @@
               }).addTo(map);
 
               map.fitBounds(routingLayer.getBounds(), { padding: [60, 60] });
-              document.getElementById('place-card').style.display = 'none';
 
               // Ocultar HUD principal y favoritos durante la navegación
               document.getElementById('hud-panel').style.display = 'none';
               document.getElementById('fav-drawer').style.display = 'none';
 
-              // Calcular métricas
               var distanciaKm = (route.distance / 1000).toFixed(1) + ' km';
               var duracionMin = Math.round(route.duration / 60) + ' min';
               
@@ -560,31 +700,15 @@
               ahora.setMinutes(ahora.getMinutes() + Math.round(route.duration / 60));
               var horaLlegada = ('0' + ahora.getHours()).slice(-2) + ':' + ('0' + ahora.getMinutes()).slice(-2);
 
-              var instruction = "Dirigirse hacia el objetivo";
-              var iconSymbol = "➔";
-              if (route.legs && route.legs[0].steps && route.legs[0].steps.length > 0) {
-                var primerPaso = route.legs[0].steps[0];
-                if (primerPaso.maneuver) {
-                  var tipo = primerPaso.maneuver.type;
-                  if (tipo.includes('turn')) iconSymbol = "⮠";
-                  else if (tipo.includes('roundabout')) iconSymbol = "⟳";
-                  else iconSymbol = "⬆";
-                }
-                instruction = primerPaso.name ? "En " + primerPaso.name : "Continuar en la ruta";
-              }
-
-              document.getElementById('nav-instruction').textContent = instruction;
-              document.getElementById('nav-street-name').textContent = "Destino: " + destinoNombre;
-              document.getElementById('nav-turn-icon').textContent = iconSymbol;
-              
               document.getElementById('nav-eta').textContent = horaLlegada;
               document.getElementById('nav-duration').textContent = duracionMin;
               document.getElementById('nav-distance').textContent = distanciaKm;
 
+              actualizarInstruccionPaso(startLat, startLon);
+
               document.getElementById('nav-banner-top').style.display = 'flex';
               document.getElementById('nav-bar-bottom').style.display = 'flex';
 
-              // Iniciar seguimiento GPS en tiempo real
               iniciarSeguimientoVivo();
             } else {
               alert("No se pudo calcular una ruta para vehículos.");
@@ -595,8 +719,34 @@
             alert("Error al conectar con el servidor de rutas.");
           });
       }, function() {
-        alert("Activá el GPS para calcular la ruta.");
+        alert("Activá el GPS para iniciar la navegación.");
       }, { enableHighAccuracy: true });
+    }
+
+    function actualizarInstruccionPaso(curLat, curLon) {
+      if (!routeSteps || routeSteps.length === 0) return;
+      
+      // Tomamos el paso actual de la ruta (simulado por cercanía o el primero por defecto)
+      var step = routeSteps[0];
+      var instruction = "Continuar por la ruta";
+      var iconSymbol = "➔";
+
+      if (step && step.maneuver) {
+        var modifier = step.maneuver.modifier || "";
+        var type = step.maneuver.type || "";
+
+        if (modifier.includes('right')) { iconSymbol = "⮞"; instruction = "Girar a la derecha"; }
+        else if (modifier.includes('left')) { iconSymbol = "⮜"; instruction = "Girar a la izquierda"; }
+        else if (type.includes('roundabout')) { iconSymbol = "⟳"; instruction = "Entrar a rotonda"; }
+        else { iconSymbol = "⬆"; instruction = "Continuar derecho"; }
+
+        if (step.name) {
+          instruction += " en " + step.name;
+        }
+      }
+
+      document.getElementById('nav-instruction').textContent = instruction;
+      document.getElementById('nav-turn-icon').textContent = iconSymbol;
     }
 
     function iniciarSeguimientoVivo() {
@@ -618,7 +768,10 @@
           marcadorUsuario.setLatLng([userLat, userLon]);
         }
 
-        // Seguir al usuario desplazando la cámara
+        // Actualizar instrucciones de giro según posición actual
+        actualizarInstruccionPaso(userLat, userLon);
+
+        // Seguir al usuario desplazando la cámara automáticamente
         map.panTo([userLat, userLon], { animate: true, duration: 1 });
       }, function(err) {
         console.log("Error de rastreo GPS:", err);
@@ -645,8 +798,6 @@
 
       document.getElementById('nav-banner-top').style.display = 'none';
       document.getElementById('nav-bar-bottom').style.display = 'none';
-
-      // Volver a mostrar el HUD y los Favoritos
       document.getElementById('hud-panel').style.display = 'flex';
       document.getElementById('fav-drawer').style.display = 'flex';
     }
@@ -680,10 +831,11 @@
         phoneEl.className = "editable-link";
       }
 
+      // Al hacer clic en "RUTA ctOS", abrimos el modal previo en vez de arrancar directo
       var dirBtn = document.getElementById('card-directions-btn');
       dirBtn.onclick = function(e) {
         e.preventDefault();
-        calcularRutaPropia(info.lat, info.lon, info.nombre);
+        abrirPlannerRuta(info.lat, info.lon, info.nombre);
       };
 
       var favBtn = document.getElementById('card-fav-btn');
