@@ -296,7 +296,7 @@
     </div>
 
     <div class="place-actions">
-      <a id="card-directions-btn" href="#" target="_blank" class="action-btn">🧭 Cómo llegar</a>
+      <a id="card-directions-btn" href="#" class="action-btn">🧭 RUTA ctOS</a>
       <button class="action-btn" id="card-fav-btn">[+] Favorito</button>
     </div>
 
@@ -336,6 +336,7 @@
     }).addTo(map);
 
     var marcadorActual = null;
+    var routingLayer = null;
     var capaOficialesGrupo = L.layerGroup();
     var datosOficialesActivos = false;
     var timeoutBusqueda = null;
@@ -393,6 +394,7 @@
       }
     };
 
+    // Clic en el mapa priorizando edificios/torres y lugares propios
     map.on('click', function(e) {
       var lat = e.latlng.lat;
       var lon = e.latlng.lng;
@@ -401,9 +403,10 @@
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var addr = data.address || {};
-          var nombreLugar = addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || addr.office || data.name;
-          var titulo = nombreLugar ? nombreLugar : (data.display_name ? data.display_name.split(',')[0] : "Punto");
-          var categoria = addr.amenity || addr.shop || addr.building || "Sector urbano";
+          
+          var nombrePropio = data.name || addr.building || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.residential;
+          var titulo = nombrePropio ? nombrePropio : (addr.road ? addr.road : "Punto de Interés");
+          var categoria = addr.building || addr.residential || addr.amenity || "Edificio / Urbanización";
           var direccion = data.display_name || "Sin dirección exacta";
 
           var precioSimulado = (addr.shop || addr.amenity === 'restaurant') ? "$$$" : "--";
@@ -413,9 +416,9 @@
             categoria: categoria.toUpperCase(),
             direccion: direccion,
             horario: "08:00 - 21:00",
-            puntuacion: null, // Sin puntuación por defecto para mostrar el enlace de añadir
+            puntuacion: null,
             precio: precioSimulado,
-            telefono: null, // Sin teléfono por defecto para mostrar el enlace de añadir
+            telefono: null,
             lat: lat,
             lon: lon
           });
@@ -424,6 +427,55 @@
           console.log("Error de red:", err);
         });
     });
+
+    function calcularRutaPropia(destLat, destLon) {
+      if (!navigator.geolocation) {
+        alert("Geolocalización no soportada.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        var startLat = pos.coords.latitude;
+        var startLon = pos.coords.longitude;
+
+        var url = 'https://router.project-osrm.org/route/v1/driving/' + startLon + ',' + startLat + ';' + destLon + ',' + destLat + '?overview=full&geometries=geojson';
+
+        fetch(url)
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data.routes && data.routes.length > 0) {
+              var routeGeoJson = data.routes[0].geometry;
+
+              if (routingLayer) {
+                map.removeLayer(routingLayer);
+              }
+
+              routingLayer = L.geoJSON(routeGeoJson, {
+                style: {
+                  color: '#00f3ff',
+                  weight: 5,
+                  opacity: 0.8
+                }
+              }).addTo(map);
+
+              map.fitBounds(routingLayer.getBounds(), { padding: [50, 50] });
+              document.getElementById('place-card').style.display = 'none';
+              
+              var distanciaKm = (data.routes[0].distance / 1000).toFixed(1);
+              var duracionMin = Math.round(data.routes[0].duration / 60);
+              alert("¡Ruta trazada en ctOS! Distancia: " + distanciaKm + " km (~" + duracionMin + " min).");
+            } else {
+              alert("No se pudo calcular una ruta para vehículos.");
+            }
+          })
+          .catch(function(err) {
+            console.log("Error de ruteo:", err);
+            alert("Error al conectar con el servidor de rutas.");
+          });
+      }, function() {
+        alert("Activá el GPS para calcular la ruta.");
+      }, { enableHighAccuracy: true });
+    }
 
     function mostrarTarjetaLugar(info) {
       if (marcadorActual) map.removeLayer(marcadorActual);
@@ -436,7 +488,6 @@
       document.getElementById('card-hours').textContent = info.horario;
       document.getElementById('card-price').textContent = info.precio;
 
-      // Puntuación
       var ratingEl = document.getElementById('card-rating');
       if (info.puntuacion) {
         ratingEl.textContent = info.puntuacion;
@@ -446,7 +497,6 @@
         ratingEl.className = "editable-link";
       }
 
-      // Teléfono
       var phoneEl = document.getElementById('card-phone');
       if (info.telefono) {
         phoneEl.textContent = info.telefono;
@@ -456,7 +506,11 @@
         phoneEl.className = "editable-link";
       }
 
-      document.getElementById('card-directions-btn').href = 'https://www.google.com/maps/dir/?api=1&destination=' + info.lat + ',' + info.lon;
+      var dirBtn = document.getElementById('card-directions-btn');
+      dirBtn.onclick = function(e) {
+        e.preventDefault();
+        calcularRutaPropia(info.lat, info.lon);
+      };
 
       var favBtn = document.getElementById('card-fav-btn');
       favBtn.onclick = function() {
