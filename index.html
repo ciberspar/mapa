@@ -427,12 +427,12 @@
   }
   .float-btn:hover { background: #00f3ff; color: #000; }
 
-  /* Estilos específicos para el diseño de Mapas sin Conexión (Estilo Apple Maps) */
+  /* Estilos específicos para Mapas sin Conexión (Estilo Apple Maps interactivo) */
   .offline-map-modal {
     position: absolute;
     top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1150;
-    width: 380px; max-width: calc(100% - 30px);
-    max-height: 90vh;
+    width: 400px; max-width: calc(100% - 30px);
+    max-height: 85vh;
     background: rgba(12, 17, 28, 0.98);
     border: 1px solid #00f3ff;
     border-radius: 20px;
@@ -440,10 +440,37 @@
     box-shadow: 0 15px 40px rgba(0,0,0,0.95), 0 0 25px rgba(0, 243, 255, 0.25);
     display: none;
     flex-direction: column;
-    align-items: center;
     gap: 14px;
     overflow-y: auto;
     backdrop-filter: blur(12px);
+  }
+  .offline-search-input {
+    width: 100%;
+    background: rgba(0, 243, 255, 0.05);
+    border: 1px solid rgba(0, 243, 255, 0.3);
+    color: #fff;
+    padding: 10px 14px;
+    font-family: monospace;
+    border-radius: 12px;
+    outline: none;
+    font-size: 0.85rem;
+  }
+  .offline-search-input:focus {
+    border-color: #00f3ff;
+    box-shadow: 0 0 8px rgba(0, 243, 255, 0.4);
+  }
+  .offline-recent-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0,243,255,0.1);
+  }
+  .offline-recent-item:hover {
+    background: rgba(0, 243, 255, 0.15);
   }
   .offline-preview-box {
     position: relative;
@@ -453,8 +480,9 @@
     overflow: hidden;
     background: #0b1329;
     box-shadow: 0 5px 15px rgba(0,0,0,0.6);
+    margin: 0 auto;
   }
-  .offline-preview-box img, .offline-map-preview-bg {
+  .offline-map-preview-bg {
     width: 100%; height: 100%; object-fit: cover;
   }
   .offline-resize-pill {
@@ -487,6 +515,7 @@
     font-size: 0.8rem;
     cursor: pointer;
     font-weight: bold;
+    align-self: center;
   }
   .offline-pill-action:hover { background: rgba(255,255,255,0.2); }
   .offline-device-card {
@@ -587,7 +616,7 @@
       </div>
       <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid rgba(0,243,255,0.2); padding-top: 8px;">
         <span>Mapas sin conexión</span>
-        <button class="hud-btn" onclick="abrirModalOffline()" style="padding: 4px 8px; font-size: 0.75rem;">Gestionar</button>
+        <button class="hud-btn" onclick="abrirModalOfflineBusqueda()" style="padding: 4px 8px; font-size: 0.75rem;">Gestionar</button>
       </div>
     </div>
     <div class="planner-footer" style="justify-content: flex-end; gap: 10px;">
@@ -596,34 +625,77 @@
     </div>
   </div>
 
-  <!-- MODAL DE MAPAS SIN CONEXIÓN -->
+  <!-- MODAL DE MAPAS SIN CONEXIÓN (CON BÚSQUEDA Y SELECCIÓN) -->
   <div id="offline-map-modal" class="offline-map-modal">
-    <button class="close-card" onclick="cerrarModalOffline()" style="position: absolute; top: 15px; right: 15px;">×</button>
     
-    <div class="offline-preview-box">
-      <div class="offline-map-preview-bg" style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); display: flex; align-items: center; justify-content: center; position: relative;">
-        <span style="font-size: 1.8rem; opacity: 0.4;">🛰️</span>
+    <!-- VISTA 1: BÚSQUEDA Y RECIENTES -->
+    <div id="offline-view-search" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+      <div class="planner-header" style="border:none; padding:0;">
+        <span>Descargar mapa nuevo</span>
+        <button class="close-card" onclick="cerrarModalOffline()">×</button>
       </div>
-      <div class="offline-resize-pill">⤢ Redimensionar</div>
+      
+      <input type="text" class="offline-search-input" placeholder="Ciudades, parques nacionales y más..." id="offline-search-input">
+
+      <div class="offline-recent-item" onclick="seleccionarLugarOffline('Ubicación actual (Córdoba)', '1,53 GB')">
+        <span style="font-size: 1.2rem;">📍</span>
+        <div>
+          <b style="font-size: 0.85rem; color: #fff;">Ubicación actual</b>
+          <span style="font-size: 0.7rem; color: #94a3b8;">Córdoba</span>
+        </div>
+      </div>
+
+      <span style="font-size: 0.75rem; color: #64748b; margin-top: 4px;">Recientes</span>
+      
+      <div class="offline-recent-item" onclick="seleccionarLugarOffline('El Capitan, Mariposa, CA', '840 MB')">
+        <span style="font-size: 1.2rem;">⭐</span>
+        <div>
+          <b style="font-size: 0.85rem; color: #fff;">El Capitan</b>
+          <span style="font-size: 0.7rem; color: #94a3b8;">Mariposa, CA, Estados Unidos</span>
+        </div>
+      </div>
+      <div class="offline-recent-item" onclick="seleccionarLugarOffline('Dallas, Texas', '2,10 GB')">
+        <span style="font-size: 1.2rem;">🏙️</span>
+        <div>
+          <b style="font-size: 0.85rem; color: #fff;">Dallas</b>
+          <span style="font-size: 0.7rem; color: #94a3b8;">Texas</span>
+        </div>
+      </div>
     </div>
 
-    <div class="offline-title-area">
-      <h3>Córdoba</h3>
-      <p>1,53 GB</p>
+    <!-- VISTA 2: DETALLE Y GESTIÓN DE MAPA SELECCIONADO -->
+    <div id="offline-view-detail" style="display: none; flex-direction: column; gap: 14px; width: 100%;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <button class="offline-pill-action" onclick="volverABusquedaOffline()" style="padding: 4px 10px; font-size: 0.75rem;">‹ Volver</button>
+        <button class="close-card" onclick="cerrarModalOffline()">×</button>
+      </div>
+
+      <div class="offline-preview-box">
+        <div class="offline-map-preview-bg" style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); display: flex; align-items: center; justify-content: center; position: relative;">
+          <span style="font-size: 1.8rem; opacity: 0.4;">🛰️</span>
+        </div>
+        <div class="offline-resize-pill">⤢ Redimensionar</div>
+      </div>
+
+      <div class="offline-title-area">
+        <h3 id="offline-selected-title">Córdoba</h3>
+        <p id="offline-selected-size">1,53 GB</p>
+      </div>
+
+      <button class="offline-pill-action" onclick="alert('Función de renombrar sector activada.')">Renombrar</button>
+
+      <div class="offline-device-card">
+        <span>Terminal de Operador (ctOS Node)</span>
+        <b>Mapa actualizado recién</b>
+      </div>
+
+      <button class="offline-delete-btn" onclick="eliminarMapaOffline()">Eliminar mapa</button>
+
+      <div class="offline-disclaimer">
+        Este mapa podría haberse descargado fuera de la región que muestra y no puede usarse en todas las regiones. Cuando entres o salgas de la región, conéctate a Internet para asegurarte de que usas el mapa de la región en la que te encuentras.
+      </div>
     </div>
 
-    <button class="offline-pill-action" onclick="alert('Función de renombrar sector activada.')">Renombrar</button>
-
-    <div class="offline-device-card">
-      <span>Terminal de Operador (ctOS Node)</span>
-      <b>Mapa actualizado anteayer</b>
-    </div>
-
-    <button class="offline-delete-btn" onclick="eliminarMapaOffline()">Eliminar mapa</button>
-
-    <div class="offline-disclaimer">
-      Este mapa podría haberse descargado fuera de la región que muestra y no puede usarse en todas las regiones. Cuando entres o salgas de la región, conéctate a Internet para asegurarte de que usas el mapa de la región en la que te encuentras.
-    </div>
   </div>
 
   <div class="hud-panel" id="hud-panel">
@@ -1203,9 +1275,11 @@
       }, { enableHighAccuracy: true });
     };
 
-    // Control del Modal de Configuración
+    // Control del Modal de Configuración y Mapas Offline
     var configModal = document.getElementById('config-modal');
     var offlineModal = document.getElementById('offline-map-modal');
+    var viewSearch = document.getElementById('offline-view-search');
+    var viewDetail = document.getElementById('offline-view-detail');
 
     document.getElementById('config-btn').onclick = function() {
       configModal.style.display = 'flex';
@@ -1215,9 +1289,23 @@
       configModal.style.display = 'none';
     }
 
-    function abrirModalOffline() {
+    function abrirModalOfflineBusqueda() {
       configModal.style.display = 'none';
+      viewSearch.style.display = 'flex';
+      viewDetail.style.display = 'none';
       offlineModal.style.display = 'flex';
+    }
+
+    function seleccionarLugarOffline(nombreLugar, tamano) {
+      document.getElementById('offline-selected-title').textContent = nombreLugar;
+      document.getElementById('offline-selected-size').textContent = tamano;
+      viewSearch.style.display = 'none';
+      viewDetail.style.display = 'flex';
+    }
+
+    function volverABusquedaOffline() {
+      viewDetail.style.display = 'none';
+      viewSearch.style.display = 'flex';
     }
 
     function cerrarModalOffline() {
@@ -1239,6 +1327,13 @@
         alert("Base de datos de favoritos purgada.");
       }
     }
+
+    // Permitir buscar escribiendo en el input offline y seleccionar el primer resultado simulado
+    document.getElementById('offline-search-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && this.value.trim() !== '') {
+        seleccionarLugarOffline(this.value.trim(), '1,45 GB');
+      }
+    });
   </script>
 </body>
 </html>
