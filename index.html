@@ -9,7 +9,7 @@
 
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<!-- Marker Cluster CSS (Para los globitos de agrupación) -->
+<!-- Marker Cluster CSS (Para los globitos de agrupación tipo Google Maps) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
@@ -783,7 +783,7 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <script>
-    var map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
+    var map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 15);
     L.control.zoom({ position: 'topright' }).addTo(map);
 
     var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -805,6 +805,7 @@
     var capaOficialesGrupo = L.layerGroup();
     var datosOficialesActivos = false;
     var timeoutBusqueda = null;
+    var timeoutOverpass = null;
     
     var favoritos = JSON.parse(localStorage.getItem('ctos_favoritos')) || [];
     renderizarFavoritos();
@@ -814,21 +815,21 @@
     var lonOfflineTemp = -64.1833;
     var nombreOfflineTemp = "Córdoba";
 
-    /* --- SISTEMA DE ICONOS PERSONALIZADOS POR CATEGORÍA --- */
+    /* --- SISTEMA DE ICONOS DINÁMICOS POR CATEGORÍA --- */
     function obtenerIconoPorCategoria(categoria) {
       var color = "#00f3ff"; // Azul Neón por defecto
       var emoji = "📍";
-      var cat = categoria.toLowerCase();
+      var cat = categoria ? categoria.toLowerCase() : "";
 
-      if (cat.includes('restaurant') || cat.includes('bar') || cat.includes('cafe') || cat.includes('food')) {
+      if (cat.includes('restaurant') || cat.includes('bar') || cat.includes('cafe') || cat.includes('food') || cat.includes('pub')) {
         color = "#ff9900"; emoji = "🍔";
-      } else if (cat.includes('shop') || cat.includes('supermarket') || cat.includes('store') || cat.includes('mall')) {
+      } else if (cat.includes('shop') || cat.includes('supermarket') || cat.includes('store') || cat.includes('mall') || cat.includes('convenience')) {
         color = "#e040fb"; emoji = "🛒";
       } else if (cat.includes('pharmacy') || cat.includes('hospital') || cat.includes('health') || cat.includes('clinic')) {
         color = "#ff3366"; emoji = "🏥";
-      } else if (cat.includes('bus') || cat.includes('station') || cat.includes('subway') || cat.includes('airport')) {
+      } else if (cat.includes('bus') || cat.includes('station') || cat.includes('subway') || cat.includes('airport') || cat.includes('transport')) {
         color = "#00ff66"; emoji = "🚏";
-      } else if (cat.includes('park') || cat.includes('garden')) {
+      } else if (cat.includes('park') || cat.includes('garden') || cat.includes('leisure')) {
         color = "#76ff03"; emoji = "🌳";
       } else if (cat.includes('official') || cat.includes('oficial')) {
         color = "#00ff66"; emoji = "🛡️";
@@ -844,7 +845,81 @@
       });
     }
 
-    /* --- PROCESAMIENTO LIMPIO DE LUGARES Y HORARIOS ("Abierto hasta...") --- */
+    /* --- CARGAR TODOS LOS LUGARES DE LA API (OVERPASS) EN LA ZONA VISIBLE --- */
+    function cargarLugaresAPI() {
+      if (map.getZoom() < 14) return; // Evitar saturar si el zoom está muy alejado
+
+      var bounds = map.getBounds();
+      var south = bounds.getSouth();
+      var west = bounds.getWest();
+      var north = bounds.getNorth();
+      var east = bounds.getEast();
+
+      // Consulta Overpass API para obtener nodos comerciales/interés en el área visible
+      var query = `[out:json][timeout:10];(
+        node["amenity"](${south},${west},${north},${east});
+        node["shop"](${south},${west},${north},${east});
+        node["tourism"](${south},${west},${north},${east});
+      );out 80;`;
+
+      var url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
+
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data && data.elements) {
+            data.elements.forEach(function(el) {
+              if (el.tags && el.tags.name) {
+                var lat = el.lat;
+                var lon = el.lon;
+                var tags = el.tags;
+                var nombre = tags.name;
+                var categoria = (tags.amenity || tags.shop || tags.tourism || "Punto").toUpperCase();
+
+                // Evitar duplicados revisando si ya está en el grupo
+                var existe = false;
+                markersGroup.eachLayer(function(layer) {
+                  var ll = layer.getLatLng();
+                  if (Math.abs(ll.lat - lat) < 0.00001 && Math.abs(ll.lng - lon) < 0.00001) {
+                    existe = true;
+                  }
+                });
+
+                if (!existe) {
+                  var marker = L.marker([lat, lon], {
+                    icon: obtenerIconoPorCategoria(categoria)
+                  });
+
+                  marker.on('click', function() {
+                    mostrarTarjetaLugar({
+                      nombre: nombre,
+                      categoria: categoria,
+                      direccion: tags['addr:street'] ? (tags['addr:street'] + (tags['addr:housenumber'] ? ' ' + tags['addr:housenumber'] : '')) : "Ubicación en zona",
+                      horario: tags.opening_hours ? ("Abierto: " + tags.opening_hours) : "Abierto hasta 21:00 hs",
+                      puntuacion: null,
+                      precio: "$$",
+                      telefono: tags.phone || tags['contact:phone'] || null,
+                      lat: lat,
+                      lon: lon
+                    });
+                  });
+
+                  markersGroup.addLayer(marker);
+                }
+              }
+            });
+          }
+        })
+        .catch(function(err) { console.log("Error cargando Overpass API:", err); });
+    }
+
+    // Disparar carga de API al mover o hacer zoom en el mapa (con retraso para optimizar)
+    map.on('moveend', function() {
+      clearTimeout(timeoutOverpass);
+      timeoutOverpass = setTimeout(cargarLugaresAPI, 600);
+    });
+
+    /* --- PROCESAMIENTO LIMPIO DE LUGARES Y HORARIOS --- */
     function procesarLugarLimpio(data) {
       var addr = data.address || {};
       
@@ -961,310 +1036,7 @@
             direccion: limpio.direccion,
             horario: limpio.horario,
             puntuacion: null,
-            precio: "$$",
-            telefono: null,
-            lat: lat,
-            lon: lon
-          });
-        })
-        .catch(function(err) { console.log("Error de red:", err); });
-    });
-
-    function abrirPlannerRuta(lat, lon, nombre) {
-      destinoActualTemp = { lat: lat, lon: lon, nombre: nombre };
-      document.getElementById('place-card').style.display = 'none';
-      document.getElementById('planner-destination').value = nombre;
-      document.getElementById('route-planner-modal').style.display = 'flex';
-
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        var url = 'https://router.project-osrm.org/route/v1/driving/' + pos.coords.longitude + ',' + pos.coords.latitude + ';' + lon + ',' + lat + '?overview=false';
-        fetch(url)
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
-            if (data.routes && data.routes.length > 0) {
-              var r = data.routes[0];
-              var dist = (r.distance / 1000).toFixed(1) + ' km';
-              var mins = Math.round(r.duration / 60) + ' min';
-              document.getElementById('planner-time').textContent = mins + ' más rápida';
-              document.getElementById('planner-dist').textContent = dist;
-            }
-          });
-      });
-    }
-
-    function cerrarPlanner() {
-      document.getElementById('route-planner-modal').style.display = 'none';
-    }
-
-    document.getElementById('planner-go-btn').onclick = function() {
-      if (!destinoActualTemp) return;
-      cerrarPlanner();
-      iniciarNavegacionEnVivo(destinoActualTemp.lat, destinoActualTemp.lon, destinoActualTemp.nombre);
-    };
-
-    function iniciarNavegacionEnVivo(destLat, destLon, destinoNombre) {
-      if (!navigator.geolocation) {
-        alert("Geolocalización no soportada.");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        var startLat = pos.coords.latitude;
-        var startLon = pos.coords.longitude;
-
-        var url = 'https://router.project-osrm.org/route/v1/driving/' + startLon + ',' + startLat + ';' + destLon + ',' + destLat + '?overview=full&geometries=geojson&steps=true';
-
-        fetch(url)
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
-            if (data.routes && data.routes.length > 0) {
-              var route = data.routes[0];
-              var routeGeoJson = route.geometry;
-              routeSteps = route.legs[0].steps || [];
-
-              if (routingLayer) {
-                map.removeLayer(routingLayer);
-              }
-
-              routingLayer = L.geoJSON(routeGeoJson, {
-                style: { color: '#00f3ff', weight: 6, opacity: 0.9 }
-              }).addTo(map);
-
-              map.fitBounds(routingLayer.getBounds(), { padding: [60, 60] });
-
-              document.getElementById('hud-panel').style.display = 'none';
-              document.getElementById('fav-drawer').style.display = 'none';
-
-              var distanciaKm = (route.distance / 1000).toFixed(1) + ' km';
-              var duracionMin = Math.round(route.duration / 60) + ' min';
-              
-              var ahora = new Date();
-              ahora.setMinutes(ahora.getMinutes() + Math.round(route.duration / 60));
-              var horaLlegada = ('0' + ahora.getHours()).slice(-2) + ':' + ('0' + ahora.getMinutes()).slice(-2);
-
-              document.getElementById('nav-eta').textContent = horaLlegada;
-              document.getElementById('nav-duration').textContent = duracionMin;
-              document.getElementById('nav-distance').textContent = distanciaKm;
-              document.getElementById('nav-street-name').textContent = "Destino: " + destinoNombre;
-
-              actualizarInstruccionPaso();
-
-              document.getElementById('nav-banner-top').style.display = 'flex';
-              document.getElementById('nav-bar-bottom').style.display = 'flex';
-
-              iniciarSeguimientoVivo();
-            } else {
-              alert("No se pudo calcular una ruta para vehículos.");
-            }
-          })
-          .catch(function(err) {
-            console.log("Error de ruteo:", err);
-            alert("Error al conectar con el servidor de rutas.");
-          });
-      }, function() {
-        alert("Activá el GPS para iniciar la navegación.");
-      }, { enableHighAccuracy: true });
-    }
-
-    function actualizarInstruccionPaso() {
-      if (!routeSteps || routeSteps.length === 0) return;
-      
-      var step = routeSteps[0];
-      var instruction = "Continuar por la ruta";
-      var iconSymbol = "⬆";
-
-      if (step && step.maneuver) {
-        var modifier = step.maneuver.modifier || "";
-        var type = step.maneuver.type || "";
-
-        if (modifier.includes('right')) { 
-          iconSymbol = "↪"; 
-          instruction = "Girar a la derecha"; 
-        } else if (modifier.includes('left')) { 
-          iconSymbol = "↩"; 
-          instruction = "Girar a la izquierda"; 
-        } else if (type.includes('roundabout')) { 
-          iconSymbol = "⟳"; 
-          instruction = "Entrar a rotonda"; 
-        } else { 
-          iconSymbol = "⬆"; 
-          instruction = "Continuar derecho"; 
-        }
-
-        if (step.name) {
-          instruction += " en " + step.name;
-        }
-      }
-
-      document.getElementById('nav-instruction').textContent = instruction;
-      document.getElementById('nav-turn-icon').textContent = iconSymbol;
-    }
-
-    function iniciarSeguimientoVivo() {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-
-      watchId = navigator.geolocation.watchPosition(function(pos) {
-        var userLat = pos.coords.latitude;
-        var userLon = pos.coords.longitude;
-
-        if (!marcadorUsuario) {
-          marcadorUsuario = L.circleMarker([userLat, userLon], {
-            radius: 9,
-            fillColor: '#00f3ff',
-            color: '#ffffff',
-            weight: 3,
-            fillOpacity: 1
-          }).addTo(map);
-        } else {
-          marcadorUsuario.setLatLng([userLat, userLon]);
-        }
-
-        actualizarInstruccionPaso();
-        map.panTo([userLat, userLon], { animate: true, duration: 1 });
-      }, function(err) {
-        console.log("Error de rastreo GPS:", err);
-      }, {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 10000
-      });
-    }
-
-    function detenerNavegacion() {
-      if (routingLayer) {
-        map.removeLayer(routingLayer);
-        routingLayer = null;
-      }
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
-      if (marcadorUsuario) {
-        map.removeLayer(marcadorUsuario);
-        marcadorUsuario = null;
-      }
-
-      document.getElementById('nav-banner-top').style.display = 'none';
-      document.getElementById('nav-bar-bottom').style.display = 'none';
-      document.getElementById('hud-panel').style.display = 'flex';
-      document.getElementById('fav-drawer').style.display = 'flex';
-    }
-
-    function mostrarTarjetaLugar(info) {
-      if (marcadorActual) markersGroup.removeLayer(marcadorActual);
-      
-      marcadorActual = L.marker([info.lat, info.lon], {
-        icon: obtenerIconoPorCategoria(info.categoria)
-      });
-      
-      markersGroup.addLayer(marcadorActual);
-      map.setView([info.lat, info.lon], 16);
-
-      document.getElementById('card-title').textContent = info.nombre;
-      document.getElementById('card-category').textContent = info.categoria;
-      document.getElementById('card-address').textContent = info.direccion;
-      document.getElementById('card-hours').textContent = info.horario;
-      document.getElementById('card-price').textContent = info.precio;
-
-      var ratingEl = document.getElementById('card-rating');
-      if (info.puntuacion) {
-        ratingEl.textContent = info.puntuacion;
-        ratingEl.className = "";
-      } else {
-        ratingEl.textContent = "Añadir puntuación";
-        ratingEl.className = "editable-link";
-      }
-
-      var phoneEl = document.getElementById('card-phone');
-      if (info.telefono) {
-        phoneEl.textContent = info.telefono;
-        phoneEl.className = "";
-      } else {
-        phoneEl.textContent = "Añadir número de teléfono";
-        phoneEl.className = "editable-link";
-      }
-
-      var dirBtn = document.getElementById('card-directions-btn');
-      dirBtn.onclick = function(e) {
-        e.preventDefault();
-        abrirPlannerRuta(info.lat, info.lon, info.nombre);
-      };
-
-      var favBtn = document.getElementById('card-fav-btn');
-      favBtn.onclick = function() {
-        agregarFavorito(info.nombre, info.lat, info.lon);
-      };
-
-      document.getElementById('place-card').style.display = 'flex';
-    }
-
-    function pedirDato(tipo) {
-      if (tipo === 'telefono') {
-        var tel = prompt("Ingresá el número de teléfono:");
-        if (tel) {
-          document.getElementById('card-phone').textContent = tel;
-          document.getElementById('card-phone').className = "";
-          alert("¡Teléfono guardado!");
-        }
-      } else if (tipo === 'puntuacion') {
-        var pts = prompt("Ingresá la puntuación (ej: ⭐ 4.5):");
-        if (pts) {
-          document.getElementById('card-rating').textContent = pts.startsWith('⭐') ? pts : '⭐ ' + pts;
-          document.getElementById('card-rating').className = "";
-          alert("¡Puntuación guardada!");
-        }
-      }
-    }
-
-    document.getElementById('close-card-btn').onclick = function() {
-      document.getElementById('place-card').style.display = 'none';
-      if (marcadorActual) {
-        markersGroup.removeLayer(marcadorActual);
-        marcadorActual = null;
-      }
-    };
-
-    /* SUGERENCIAS DE BÚSQUEDA SÚPER PRECISAS Y LIMPIAS */
-    var inputUbicacion = document.getElementById('ubicacion-input');
-    inputUbicacion.oninput = function() {
-      var query = inputUbicacion.value;
-      var lista = document.getElementById('suggestions-list');
-      
-      clearTimeout(timeoutBusqueda);
-      if (!query || query.length < 2) {
-        lista.style.display = 'none';
-        lista.innerHTML = '';
-        return;
-      }
-
-      timeoutBusqueda = setTimeout(function() {
-        var bounds = map.getBounds();
-        var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
-        var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&limit=8&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
-
-        fetch(searchUrl)
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
-            lista.innerHTML = '';
-            if (data && data.length > 0) {
-              data.forEach(function(item) {
-                var limpio = procesarLugarLimpio(item);
-
-                var div = document.createElement('div');
-                div.className = 'suggestion-item';
-                div.innerHTML = '<strong>' + limpio.titulo + '</strong> <span style="font-size:0.7rem; color:#94a3b8;">(' + limpio.categoria + ')</span><br><span style="font-size:0.68rem; color:#00f3ff; opacity:0.8;">' + limpio.direccion + '</span>';
-                
-                div.onclick = function() {
-                  inputUbicacion.value = limpio.titulo;
-                  lista.style.display = 'none';
-                  mostrarTarjetaLugar({
-                    nombre: limpio.titulo,
-                    categoria: limpio.categoria,
-                    direccion: limpio.direccion,
-                    horario: limpio.horario,
-                    puntuacion: null,
-                    precio: "$$",
+            precio: "$$", telefono: null, lat: lat, lon: lon }); }) .catch(function(err) { console.log("Error de red:", err); }); });      function abrirPlannerRuta(lat, lon, nombre) { destinoActualTemp = { lat: lat, lon: lon, nombre: nombre }; document.getElementById('place-card').style.display = 'none'; document.getElementById('planner-destination').value = nombre; document.getElementById('route-planner-modal').style.display = 'flex';        if (!navigator.geolocation) return; navigator.geolocation.getCurrentPosition(function(pos) { var url = 'https://router.project-osrm.org/route/v1/driving/' + pos.coords.longitude + ',' + pos.coords.latitude + ';' + lon + ',' + lat + '?overview=false'; fetch(url) .then(function(res) { return res.json(); }) .then(function(data) { if (data.routes && data.routes.length > 0) { var r = data.routes[0]; var dist = (r.distance / 1000).toFixed(1) + ' km'; var mins = Math.round(r.duration / 60) + ' min'; document.getElementById('planner-time').textContent = mins + ' más rápida'; document.getElementById('planner-dist').textContent = dist; } }); }); }      function cerrarPlanner() { document.getElementById('route-planner-modal').style.display = 'none'; }      document.getElementById('planner-go-btn').onclick = function() { if (!destinoActualTemp) return; cerrarPlanner(); iniciarNavegacionEnVivo(destinoActualTemp.lat, destinoActualTemp.lon, destinoActualTemp.nombre); };      function iniciarNavegacionEnVivo(destLat, destLon, destinoNombre) { if (!navigator.geolocation) { alert("Geolocalización no soportada."); return; }        navigator.geolocation.getCurrentPosition(function(pos) { var startLat = pos.coords.latitude; var startLon = pos.coords.longitude;          var url = 'https://router.project-osrm.org/route/v1/driving/' + startLon + ',' + startLat + ';' + destLon + ',' + destLat + '?overview=full&geometries=geojson&steps=true';          fetch(url) .then(function(res) { return res.json(); }) .then(function(data) { if (data.routes && data.routes.length > 0) { var route = data.routes[0]; var routeGeoJson = route.geometry; routeSteps = route.legs[0].steps \vert{}\vert{} [];                if (routingLayer) { map.removeLayer(routingLayer); }                routingLayer = L.geoJSON(routeGeoJson, { style: { color: '#00f3ff', weight: 6, opacity: 0.9 } }).addTo(map);                map.fitBounds(routingLayer.getBounds(), { padding: [60, 60] });                document.getElementById('hud-panel').style.display = 'none'; document.getElementById('fav-drawer').style.display = 'none';                var distanciaKm = (route.distance / 1000).toFixed(1) + ' km'; var duracionMin = Math.round(route.duration / 60) + ' min';  var ahora = new Date(); ahora.setMinutes(ahora.getMinutes() + Math.round(route.duration / 60)); var horaLlegada = ('0' + ahora.getHours()).slice(-2) + ':' + ('0' + ahora.getMinutes()).slice(-2);                document.getElementById('nav-eta').textContent = horaLlegada; document.getElementById('nav-duration').textContent = duracionMin; document.getElementById('nav-distance').textContent = distanciaKm; document.getElementById('nav-street-name').textContent = "Destino: " + destinoNombre;                actualizarInstruccionPaso();                document.getElementById('nav-banner-top').style.display = 'flex'; document.getElementById('nav-bar-bottom').style.display = 'flex';                iniciarSeguimientoVivo(); } else { alert("No se pudo calcular una ruta para vehículos."); } }) .catch(function(err) { console.log("Error de ruteo:", err); alert("Error al conectar con el servidor de rutas."); }); }, function() { alert("Activá el GPS para iniciar la navegación."); }, { enableHighAccuracy: true }); }      function actualizarInstruccionPaso() { if (!routeSteps \vert{}\vert{} routeSteps.length === 0) return;  var step = routeSteps[0]; var instruction = "Continuar por la ruta"; var iconSymbol = "⬆";        if (step && step.maneuver) { var modifier = step.maneuver.modifier \vert{}\vert{} ""; var type = step.maneuver.type \vert{}\vert{} "";          if (modifier.includes('right')) { iconSymbol = "↪"; instruction = "Girar a la derecha"; } else if (modifier.includes('left')) { iconSymbol = "↩"; instruction = "Girar a la izquierda"; } else if (type.includes('roundabout')) { iconSymbol = "⟳"; instruction = "Entrar a rotonda"; } else { iconSymbol = "⬆"; instruction = "Continuar derecho"; }          if (step.name) { instruction += " en " + step.name; } }        document.getElementById('nav-instruction').textContent = instruction; document.getElementById('nav-turn-icon').textContent = iconSymbol; }      function iniciarSeguimientoVivo() { if (watchId) navigator.geolocation.clearWatch(watchId);        watchId = navigator.geolocation.watchPosition(function(pos) { var userLat = pos.coords.latitude; var userLon = pos.coords.longitude;          if (!marcadorUsuario) { marcadorUsuario = L.circleMarker([userLat, userLon], { radius: 9, fillColor: '#00f3ff', color: '#ffffff', weight: 3, fillOpacity: 1 }).addTo(map); } else { marcadorUsuario.setLatLng([userLat, userLon]); }          actualizarInstruccionPaso(); map.panTo([userLat, userLon], { animate: true, duration: 1 }); }, function(err) { console.log("Error de rastreo GPS:", err); }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }); }      function detenerNavegacion() { if (routingLayer) { map.removeLayer(routingLayer); routingLayer = null; } if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; } if (marcadorUsuario) { map.removeLayer(marcadorUsuario); marcadorUsuario = null; }        document.getElementById('nav-banner-top').style.display = 'none'; document.getElementById('nav-bar-bottom').style.display = 'none'; document.getElementById('hud-panel').style.display = 'flex'; document.getElementById('fav-drawer').style.display = 'flex'; }      function mostrarTarjetaLugar(info) { if (marcadorActual) markersGroup.removeLayer(marcadorActual);  marcadorActual = L.marker([info.lat, info.lon], { icon: obtenerIconoPorCategoria(info.categoria) });  markersGroup.addLayer(marcadorActual); map.setView([info.lat, info.lon], 16);        document.getElementById('card-title').textContent = info.nombre; document.getElementById('card-category').textContent = info.categoria; document.getElementById('card-address').textContent = info.direccion; document.getElementById('card-hours').textContent = info.horario; document.getElementById('card-price').textContent = info.precio;        var ratingEl = document.getElementById('card-rating'); if (info.puntuacion) { ratingEl.textContent = info.puntuacion; ratingEl.className = ""; } else { ratingEl.textContent = "Añadir puntuación"; ratingEl.className = "editable-link"; }        var phoneEl = document.getElementById('card-phone'); if (info.telefono) { phoneEl.textContent = info.telefono; phoneEl.className = ""; } else { phoneEl.textContent = "Añadir número de teléfono"; phoneEl.className = "editable-link"; }        var dirBtn = document.getElementById('card-directions-btn'); dirBtn.onclick = function(e) { e.preventDefault(); abrirPlannerRuta(info.lat, info.lon, info.nombre); };        var favBtn = document.getElementById('card-fav-btn'); favBtn.onclick = function() { agregarFavorito(info.nombre, info.lat, info.lon); };        document.getElementById('place-card').style.display = 'flex'; }      function pedirDato(tipo) { if (tipo === 'telefono') { var tel = prompt("Ingresá el número de teléfono:"); if (tel) { document.getElementById('card-phone').textContent = tel; document.getElementById('card-phone').className = ""; alert("¡Teléfono guardado!"); } } else if (tipo === 'puntuacion') { var pts = prompt("Ingresá la puntuación (ej: ⭐ 4.5):"); if (pts) { document.getElementById('card-rating').textContent = pts.startsWith('⭐') ? pts : '⭐ ' + pts; document.getElementById('card-rating').className = ""; alert("¡Puntuación guardada!"); } } }      document.getElementById('close-card-btn').onclick = function() { document.getElementById('place-card').style.display = 'none'; if (marcadorActual) { markersGroup.removeLayer(marcadorActual); marcadorActual = null; } };      /* SUGERENCIAS DE BÚSQUEDA SÚPER PRECISAS Y LIMPIAS */ var inputUbicacion = document.getElementById('ubicacion-input'); inputUbicacion.oninput = function() { var query = inputUbicacion.value; var lista = document.getElementById('suggestions-list');  clearTimeout(timeoutBusqueda); if (!query \vert{}\vert{} query.length < 2) { lista.style.display = 'none'; lista.innerHTML = ''; return; }        timeoutBusqueda = setTimeout(function() { var bounds = map.getBounds(); var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth(); var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&limit=8&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;          fetch(searchUrl) .then(function(res) { return res.json(); }) .then(function(data) { lista.innerHTML = ''; if (data && data.length > 0) { data.forEach(function(item) { var limpio = procesarLugarLimpio(item);                  var div = document.createElement('div'); div.className = 'suggestion-item'; div.innerHTML = '<strong>' + limpio.titulo + '</strong> <span style="font-size:0.7rem; color:#94a3b8;">(' + limpio.categoria + ')</span><br><span style="font-size:0.68rem; color:#00f3ff; opacity:0.8;">' + limpio.direccion + '</span>';  div.onclick = function() { inputUbicacion.value = limpio.titulo; lista.style.display = 'none'; mostrarTarjetaLugar({ nombre: limpio.titulo, categoria: limpio.categoria, direccion: limpio.direccion, horario: limpio.horario, puntuacion: null, precio: "$$",
                     telefono: null,
                     lat: parseFloat(item.lat),
                     lon: parseFloat(item.lon)
@@ -1303,62 +1075,7 @@
               direccion: limpio.direccion,
               horario: limpio.horario,
               puntuacion: null,
-              precio: "$$",
-              telefono: null,
-              lat: parseFloat(item.lat),
-              lon: parseFloat(item.lon)
-            });
-          } else {
-            alert("Ubicación o complejo no encontrado.");
-          }
-        });
-    };
-
-    function agregarFavorito(nombre, lat, lon) {
-      var existe = false;
-      for (var i = 0; i < favoritos.length; i++) {
-        if (favoritos[i].lat === lat && favoritos[i].lon === lon) existe = true;
-      }
-      if (!existe) {
-        favoritos.push({ nombre: nombre, lat: lat, lon: lon });
-        localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos));
-        renderizarFavoritos();
-        alert("Guardado en favoritos.");
-      } else {
-        alert("Ya está en favoritos.");
-      }
-    }
-
-    function eliminarFavorito(index) {
-      favoritos.splice(index, 1);
-      localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos));
-      renderizarFavoritos();
-    }
-
-    function renderizarFavoritos() {
-      var contenedor = document.getElementById('lista-favoritos');
-      var contador = document.getElementById('fav-count');
-      contenedor.innerHTML = '';
-      contador.textContent = favoritos.length;
-
-      if (favoritos.length === 0) {
-        contenedor.innerHTML = '<div style="font-size: 0.75rem; color: rgba(0,243,255,0.4); padding: 4px;">Sin objetivos</div>';
-        return;
-      }
-
-      favoritos.forEach(function(fav, index) {
-        var div = document.createElement('div');
-        div.className = 'fav-item';
-        div.innerHTML = '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">' + fav.nombre + '</span><button class="del-fav">×</button>';
-        
-        div.onclick = function() {
-          mostrarTarjetaLugar({
-            nombre: fav.nombre,
-            categoria: "FAVORITO",
-            direccion: fav.nombre,
-            horario: "Abierto 24hs",
-            puntuacion: null,
-            precio: "$$",
+              precio: "$$", telefono: null, lat: parseFloat(item.lat), lon: parseFloat(item.lon) }); } else { alert("Ubicación o complejo não encontrado."); } }); };      function agregarFavorito(nombre, lat, lon) { var existe = false; for (var i = 0; i < favoritos.length; i++) { if (favoritos[i].lat === lat && favoritos[i].lon === lon) existe = true; } if (!existe) { favoritos.push({ nombre: nombre, lat: lat, lon: lon }); localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos)); renderizarFavoritos(); alert("Guardado en favoritos."); } else { alert("Ya está en favoritos."); } }      function eliminarFavorito(index) { favoritos.splice(index, 1); localStorage.setItem('ctos_favoritos', JSON.stringify(favoritos)); renderizarFavoritos(); }      function renderizarFavoritos() { var contenedor = document.getElementById('lista-favoritos'); var contador = document.getElementById('fav-count'); contenedor.innerHTML = ''; contador.textContent = favoritos.length;        if (favoritos.length === 0) { contenedor.innerHTML = '<div style="font-size: 0.75rem; color: rgba(0,243,255,0.4); padding: 4px;">Sin objetivos</div>'; return; }        favoritos.forEach(function(fav, index) { var div = document.createElement('div'); div.className = 'fav-item'; div.innerHTML = '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">' + fav.nombre + '</span><button class="del-fav">×</button>';  div.onclick = function() { mostrarTarjetaLugar({ nombre: fav.nombre, categoria: "FAVORITO", direccion: fav.nombre, horario: "Abierto 24hs", puntuacion: null, precio: "$$",
             telefono: null,
             lat: fav.lat,
             lon: fav.lon
@@ -1550,6 +1267,9 @@
           });
       }
     });
+
+    // Cargar los lugares iniciales al arrancar la app
+    setTimeout(cargarLugaresAPI, 1000);
   </script>
 
   <script>
