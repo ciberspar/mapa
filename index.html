@@ -408,7 +408,7 @@
   .fav-item:hover { background: rgba(0, 243, 255, 0.2); color: #fff; }
   .del-fav { background: none; border: none; color: #ff3366; cursor: pointer; font-weight: bold; }
 
-  /* Botones flotantes (Subidos para evitar la barra de la tablet) */
+  /* Botones flotantes */
   .floating-controls {
     position: absolute;
     bottom: 80px; right: 20px; z-index: 1000;
@@ -626,6 +626,10 @@
       <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid rgba(0,243,255,0.2); padding-top: 8px;">
         <span>Mapas sin conexión</span>
         <button class="hud-btn" onclick="abrirModalOfflineBusqueda()" style="padding: 4px 8px; font-size: 0.75rem;">Gestionar</button>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid rgba(0,243,255,0.2); padding-top: 8px;">
+        <span>Reportar un problema</span>
+        <a href="https://github.com/ciberspar/mapa/issues" target="_blank" rel="noopener noreferrer" class="hud-btn" style="padding: 4px 8px; font-size: 0.75rem; text-decoration: none;">GitHub 💬</a>
       </div>
     </div>
     <div class="planner-footer" style="justify-content: flex-end; gap: 10px;">
@@ -1418,7 +1422,6 @@
     });
   </script>
 
-  <!-- REGISTRO DE SERVICE WORKER PARA MODO OFFLINE / PWA -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
