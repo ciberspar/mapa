@@ -6,8 +6,13 @@
 <title>🗺️ ctOS // Global Official Sec-Grid</title>
 <!-- Icono de Mapa en formato SVG como Favicon -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Marker Cluster CSS (Para los globitos de agrupación) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#00f3ff">
 <style>
@@ -28,6 +33,19 @@
   /* Filtro ciberpunk para el mapa */
   .leaflet-layer {
     filter: brightness(0.55) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.35);
+  }
+
+  /* Personalización de los globitos de agrupación ciberpunk (Cluster) */
+  .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
+    background-color: rgba(0, 243, 255, 0.2) !important;
+    border: 1px solid #00f3ff;
+    box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+  }
+  .marker-cluster div {
+    background-color: rgba(5, 12, 25, 0.9) !important;
+    color: #00f3ff !important;
+    font-family: monospace;
+    font-weight: bold;
   }
 
   /* Panel de Control HUD Principal */
@@ -761,6 +779,9 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Marker Cluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
   <script>
     var map = L.map('map', { zoomControl: false }).setView([-31.4167, -64.1833], 13);
     L.control.zoom({ position: 'topright' }).addTo(map);
@@ -768,6 +789,12 @@
     var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    /* GRUPO DE AGRUPACIÓN DE MARCADORES (MARKER CLUSTER / GLOBITOS DE GOOGLE MAPS) */
+    var markersGroup = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 40
     }).addTo(map);
 
     var marcadorActual = null;
@@ -787,19 +814,40 @@
     var lonOfflineTemp = -64.1833;
     var nombreOfflineTemp = "Córdoba";
 
-    var registrosOficialesGlobales = [
-      {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [-64.1810, -31.4135] },
-        properties: { fuente: "Portal Oficial", entidad: "Base de Monitoreo", desc: "Sector seguro verificado." }
-      }
-    ];
+    /* --- SISTEMA DE ICONOS PERSONALIZADOS POR CATEGORÍA --- */
+    function obtenerIconoPorCategoria(categoria) {
+      var color = "#00f3ff"; // Azul Neón por defecto
+      var emoji = "📍";
+      var cat = categoria.toLowerCase();
 
-    /* --- FUNCIÓN AUXILIAR PARA FORMATEAR NOMBRES Y HORARIOS LIMPIOS --- */
+      if (cat.includes('restaurant') || cat.includes('bar') || cat.includes('cafe') || cat.includes('food')) {
+        color = "#ff9900"; emoji = "🍔";
+      } else if (cat.includes('shop') || cat.includes('supermarket') || cat.includes('store') || cat.includes('mall')) {
+        color = "#e040fb"; emoji = "🛒";
+      } else if (cat.includes('pharmacy') || cat.includes('hospital') || cat.includes('health') || cat.includes('clinic')) {
+        color = "#ff3366"; emoji = "🏥";
+      } else if (cat.includes('bus') || cat.includes('station') || cat.includes('subway') || cat.includes('airport')) {
+        color = "#00ff66"; emoji = "🚏";
+      } else if (cat.includes('park') || cat.includes('garden')) {
+        color = "#76ff03"; emoji = "🌳";
+      } else if (cat.includes('official') || cat.includes('oficial')) {
+        color = "#00ff66"; emoji = "🛡️";
+      }
+
+      var svgHtml = '<div style="background:' + color + '; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 0 10px ' + color + '; font-size:16px;">' + emoji + '</div>';
+
+      return L.divIcon({
+        html: svgHtml,
+        className: 'custom-marker-icon',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+    }
+
+    /* --- PROCESAMIENTO LIMPIO DE LUGARES Y HORARIOS ("Abierto hasta...") --- */
     function procesarLugarLimpio(data) {
       var addr = data.address || {};
       
-      // 1. Extraer Título Claro y Conciso
       var titulo = data.name || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.building;
       if (!titulo) {
         if (addr.road) {
@@ -809,17 +857,14 @@
         }
       }
 
-      // 2. Extraer Dirección Limpia (sin el choclo entero de texto)
       var calle = addr.road || addr.pedestrian || addr.footway || "";
       var numero = addr.house_number ? " " + addr.house_number : "";
       var barrioCiudad = addr.suburb || addr.city_district || addr.city || addr.town || "";
       var direccionLimpia = calle ? (calle + numero + (barrioCiudad ? ", " + barrioCiudad : "")) : (data.display_name ? data.display_name.split(',')[0] : "Sin dirección específica");
 
-      // 3. Categoría clara
       var categoria = (addr.amenity || addr.shop || addr.building || addr.tourism || "Ubicación").toUpperCase();
 
-      // 4. Lógica de "Abierto hasta..."
-      var horarioTexto = "Abierto hasta 21:00 hs"; // Valor por defecto
+      var horarioTexto = "Abierto hasta 21:00 hs";
       if (data.extratags && data.extratags.opening_hours) {
         var oh = data.extratags.opening_hours;
         if (oh === "24/7") {
@@ -832,7 +877,6 @@
           }
         }
       } else {
-        // Asignación inteligente de cierre según la categoría
         var catLower = categoria.toLowerCase();
         if (catLower.includes('bar') || catLower.includes('pub') || catLower.includes('restaurant')) {
           horarioTexto = "Abierto hasta 02:00 hs";
@@ -851,6 +895,14 @@
       };
     }
 
+    var registrosOficialesGlobales = [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-64.1810, -31.4135] },
+        properties: { fuente: "Portal Oficial", entidad: "Base de Monitoreo", desc: "Sector seguro verificado." }
+      }
+    ];
+
     function cargarDatosOficiales() {
       capaOficialesGrupo.clearLayers();
       L.geoJSON({
@@ -858,7 +910,7 @@
         features: registrosOficialesGlobales
       }, {
         pointToLayer: function (feature, latlng) {
-          return L.circleMarker(latlng, { radius: 8, fillColor: "#00ff66", color: "#fff", weight: 1, fillOpacity: 0.8 });
+          return L.marker(latlng, { icon: obtenerIconoPorCategoria("oficial") });
         },
         onEachFeature: function (feature, layer) {
           layer.on('click', function() {
@@ -893,7 +945,7 @@
       }
     };
 
-    /* SELECCIÓN AL HACER CLIC EN EL MAPA */
+    /* AL HACER CLIC EN EL MAPA */
     map.on('click', function(e) {
       var lat = e.latlng.lat;
       var lon = e.latlng.lng;
@@ -1100,8 +1152,13 @@
     }
 
     function mostrarTarjetaLugar(info) {
-      if (marcadorActual) map.removeLayer(marcadorActual);
-      marcadorActual = L.marker([info.lat, info.lon]).addTo(map);
+      if (marcadorActual) markersGroup.removeLayer(marcadorActual);
+      
+      marcadorActual = L.marker([info.lat, info.lon], {
+        icon: obtenerIconoPorCategoria(info.categoria)
+      });
+      
+      markersGroup.addLayer(marcadorActual);
       map.setView([info.lat, info.lon], 16);
 
       document.getElementById('card-title').textContent = info.nombre;
@@ -1163,7 +1220,7 @@
     document.getElementById('close-card-btn').onclick = function() {
       document.getElementById('place-card').style.display = 'none';
       if (marcadorActual) {
-        map.removeLayer(marcadorActual);
+        markersGroup.removeLayer(marcadorActual);
         marcadorActual = null;
       }
     };
