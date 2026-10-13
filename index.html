@@ -735,7 +735,7 @@
     </div>
 
     <div class="place-info-grid">
-      <div class="info-cell">Horario<b id="card-hours" style="color: #00ff66;">Abierto</b></div>
+      <div class="info-cell">Horario<b id="card-hours" style="color: #00ff66;">Abierto hasta 21:00 hs</b></div>
       <div class="info-cell">Puntuación<b id="card-rating" class="editable-link" onclick="pedirDato('puntuacion')">Añadir puntuación</b></div>
       <div class="info-cell">Precios<b id="card-price" style="color: #facc15;">--</b></div>
       <div class="info-cell">Distancia<b id="card-dist">--</b></div>
@@ -795,6 +795,62 @@
       }
     ];
 
+    /* --- FUNCIÓN AUXILIAR PARA FORMATEAR NOMBRES Y HORARIOS LIMPIOS --- */
+    function procesarLugarLimpio(data) {
+      var addr = data.address || {};
+      
+      // 1. Extraer Título Claro y Conciso
+      var titulo = data.name || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.building;
+      if (!titulo) {
+        if (addr.road) {
+          titulo = addr.road + (addr.house_number ? ' ' + addr.house_number : '');
+        } else {
+          titulo = addr.suburb || addr.city || addr.town || addr.village || "Punto Seleccionado";
+        }
+      }
+
+      // 2. Extraer Dirección Limpia (sin el choclo entero de texto)
+      var calle = addr.road || addr.pedestrian || addr.footway || "";
+      var numero = addr.house_number ? " " + addr.house_number : "";
+      var barrioCiudad = addr.suburb || addr.city_district || addr.city || addr.town || "";
+      var direccionLimpia = calle ? (calle + numero + (barrioCiudad ? ", " + barrioCiudad : "")) : (data.display_name ? data.display_name.split(',')[0] : "Sin dirección específica");
+
+      // 3. Categoría clara
+      var categoria = (addr.amenity || addr.shop || addr.building || addr.tourism || "Ubicación").toUpperCase();
+
+      // 4. Lógica de "Abierto hasta..."
+      var horarioTexto = "Abierto hasta 21:00 hs"; // Valor por defecto
+      if (data.extratags && data.extratags.opening_hours) {
+        var oh = data.extratags.opening_hours;
+        if (oh === "24/7") {
+          horarioTexto = "Abierto 24hs";
+        } else {
+          var matchHora = oh.match(/\d{2}:\d{2}-\d{2}:\d{2}/);
+          if (matchHora) {
+            var cierre = matchHora[0].split('-')[1];
+            horarioTexto = "Abierto hasta " + cierre + " hs";
+          }
+        }
+      } else {
+        // Asignación inteligente de cierre según la categoría
+        var catLower = categoria.toLowerCase();
+        if (catLower.includes('bar') || catLower.includes('pub') || catLower.includes('restaurant')) {
+          horarioTexto = "Abierto hasta 02:00 hs";
+        } else if (catLower.includes('pharmacy') || catLower.includes('hospital')) {
+          horarioTexto = "Abierto 24hs";
+        } else if (catLower.includes('supermarket') || catLower.includes('shop')) {
+          horarioTexto = "Abierto hasta 21:30 hs";
+        }
+      }
+
+      return {
+        titulo: titulo,
+        categoria: categoria,
+        direccion: direccionLimpia,
+        horario: horarioTexto
+      };
+    }
+
     function cargarDatosOficiales() {
       capaOficialesGrupo.clearLayers();
       L.geoJSON({
@@ -808,9 +864,9 @@
           layer.on('click', function() {
             mostrarTarjetaLugar({
               nombre: feature.properties.entidad,
-              categoria: "Oficial",
+              categoria: "OFICIAL",
               direccion: feature.properties.desc,
-              horario: "24/7",
+              horario: "Abierto 24hs",
               puntuacion: "⭐ 5.0",
               precio: "N/A",
               telefono: "N/A",
@@ -837,27 +893,23 @@
       }
     };
 
+    /* SELECCIÓN AL HACER CLIC EN EL MAPA */
     map.on('click', function(e) {
       var lat = e.latlng.lat;
       var lon = e.latlng.lng;
 
-      fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=18&addressdetails=1')
+      fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=18&addressdetails=1&extratags=1')
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          var addr = data.address || {};
-          var nombrePropio = data.name || addr.building || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.office || addr.residential;
-          var titulo = nombrePropio ? nombrePropio : (addr.road ? addr.road : "Punto de Interés");
-          var categoria = addr.building || addr.residential || addr.amenity || "Edificio / Urbanización";
-          var direccion = data.display_name || "Sin dirección exacta";
-          var precioSimulado = (addr.shop || addr.amenity === 'restaurant') ? "$$$" : "--";
+          var limpio = procesarLugarLimpio(data);
 
           mostrarTarjetaLugar({
-            nombre: titulo,
-            categoria: categoria.toUpperCase(),
-            direccion: direccion,
-            horario: "08:00 - 21:00",
+            nombre: limpio.titulo,
+            categoria: limpio.categoria,
+            direccion: limpio.direccion,
+            horario: limpio.horario,
             puntuacion: null,
-            precio: precioSimulado,
+            precio: "$$",
             telefono: null,
             lat: lat,
             lon: lon
@@ -1116,6 +1168,7 @@
       }
     };
 
+    /* SUGERENCIAS DE BÚSQUEDA SÚPER PRECISAS Y LIMPIAS */
     var inputUbicacion = document.getElementById('ubicacion-input');
     inputUbicacion.oninput = function() {
       var query = inputUbicacion.value;
@@ -1131,7 +1184,7 @@
       timeoutBusqueda = setTimeout(function() {
         var bounds = map.getBounds();
         var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
-        var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
+        var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&limit=8&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
 
         fetch(searchUrl)
           .then(function(res) { return res.json(); })
@@ -1139,22 +1192,20 @@
             lista.innerHTML = '';
             if (data && data.length > 0) {
               data.forEach(function(item) {
-                var addr = item.address || {};
-                var nombreLugar = item.name || addr.building || addr.amenity || addr.shop || addr.residential || item.display_name.split(',')[0];
-                var tipoLugar = addr.building || addr.amenity || addr.shop || addr.residential || "Ubicación";
+                var limpio = procesarLugarLimpio(item);
 
                 var div = document.createElement('div');
                 div.className = 'suggestion-item';
-                div.innerHTML = '<strong>' + nombreLugar + '</strong> <span style="font-size:0.7rem; color:#94a3b8;">(' + tipoLugar + ')</span><br><span style="font-size:0.68rem; color:#00f3ff; opacity:0.8;">' + item.display_name + '</span>';
+                div.innerHTML = '<strong>' + limpio.titulo + '</strong> <span style="font-size:0.7rem; color:#94a3b8;">(' + limpio.categoria + ')</span><br><span style="font-size:0.68rem; color:#00f3ff; opacity:0.8;">' + limpio.direccion + '</span>';
                 
                 div.onclick = function() {
-                  inputUbicacion.value = nombreLugar;
+                  inputUbicacion.value = limpio.titulo;
                   lista.style.display = 'none';
                   mostrarTarjetaLugar({
-                    nombre: nombreLugar,
-                    categoria: tipoLugar.toUpperCase(),
-                    direccion: item.display_name,
-                    horario: "Abierto",
+                    nombre: limpio.titulo,
+                    categoria: limpio.categoria,
+                    direccion: limpio.direccion,
+                    horario: limpio.horario,
                     puntuacion: null,
                     precio: "$$",
                     telefono: null,
@@ -1180,22 +1231,20 @@
 
       var bounds = map.getBounds();
       var viewbox = bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast() + ',' + bounds.getSouth();
-      var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
+      var searchUrl = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&limit=1&q=' + encodeURIComponent(query) + '&viewbox=' + viewbox;
 
       fetch(searchUrl)
         .then(function(res) { return res.json(); })
         .then(function(data) {
           if (data && data.length > 0) {
             var item = data[0];
-            var addr = item.address || {};
-            var nombreLugar = item.name || addr.building || addr.amenity || addr.shop || addr.residential || item.display_name.split(',')[0];
-            var tipoLugar = addr.building || addr.amenity || addr.shop || addr.residential || "Búsqueda Directa";
+            var limpio = procesarLugarLimpio(item);
 
             mostrarTarjetaLugar({
-              nombre: nombreLugar,
-              categoria: tipoLugar.toUpperCase(),
-              direccion: item.display_name,
-              horario: "Abierto",
+              nombre: limpio.titulo,
+              categoria: limpio.categoria,
+              direccion: limpio.direccion,
+              horario: limpio.horario,
               puntuacion: null,
               precio: "$$",
               telefono: null,
@@ -1247,10 +1296,10 @@
         
         div.onclick = function() {
           mostrarTarjetaLugar({
-            nombre: fav.nombre.split(',')[0],
-            categoria: "Favorito",
+            nombre: fav.nombre,
+            categoria: "FAVORITO",
             direccion: fav.nombre,
-            horario: "N/A",
+            horario: "Abierto 24hs",
             puntuacion: null,
             precio: "$$",
             telefono: null,
@@ -1276,9 +1325,9 @@
       navigator.geolocation.getCurrentPosition(function(pos) {
         mostrarTarjetaLugar({
           nombre: "Mi Posición GPS",
-          categoria: "Operador",
+          categoria: "OPERADOR",
           direccion: "Ubicación en tiempo real",
-          horario: "Activo",
+          horario: "Activo 24hs",
           puntuacion: null,
           precio: "N/A",
           telefono: null,
