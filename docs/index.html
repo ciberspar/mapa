@@ -4,17 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🗺️ ctOS // Global Official Sec-Grid</title>
+
 <!-- Etiqueta de verificación de Google Search Console -->
 <meta name="google-site-verification" content="0_8L2FNmuJvOBrp7A0v8mH1B-nOkvmt8L6A6Ag-YsuA" />
+
+<!-- Preconexión a CDNs externos para acelerar la red -->
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="preconnect" href="https://tile.openstreetmap.org">
+<link rel="preconnect" href="https://overpass-api.de">
 
 <!-- Icono de Mapa en formato SVG como Favicon -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
 
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<!-- Marker Cluster CSS (Para los globitos de agrupación tipo Google Maps) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<!-- Leaflet CSS (Optimizado no bloqueante) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'" />
+<!-- Marker Cluster CSS (Optimizado no bloqueante) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" media="print" onload="this.media='all'" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" media="print" onload="this.media='all'" />
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#00f3ff">
