@@ -1,0 +1,16 @@
+{
+  "name": "ctOS Global Sec-Grid",
+  "short_name": "ctOS",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050811",
+  "theme_color": "#00f3ff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
